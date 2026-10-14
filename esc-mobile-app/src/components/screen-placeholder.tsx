@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { StyleSheet, View } from 'react-native';
+import { colors } from '../theme';
+import { AppText } from './app-text';
 
 type Props = {
   title: string;
@@ -8,7 +9,7 @@ type Props = {
 export function ScreenPlaceholder({ title }: Props) {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
+      <AppText variant="title">{title}</AppText>
     </View>
   );
 }
@@ -19,10 +20,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.background,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: colors.text,
   },
 });

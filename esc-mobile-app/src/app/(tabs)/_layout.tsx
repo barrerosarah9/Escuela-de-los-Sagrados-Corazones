@@ -1,19 +1,21 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-import { colors } from '../../theme/colors';
+import { TabIcon } from '../../components/tab-icon';
+import { colors, fonts } from '../../theme';
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarInactiveTintColor: colors.tabInactive,
+        tabBarLabelStyle: { fontFamily: fonts.sansSemiBold, fontSize: 10 },
         tabBarStyle: {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
         },
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
+        headerTitleStyle: { fontFamily: fonts.serif, fontSize: 22 },
         headerShadowVisible: false,
       }}
     >
@@ -21,8 +23,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Inicio',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={size} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name={focused ? 'home' : 'home-outline'} color={color} focused={focused} />
           ),
         }}
       />
@@ -30,8 +32,8 @@ export default function TabsLayout() {
         name="oracion"
         options={{
           title: 'Oración',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'heart' : 'heart-outline'} color={color} size={size} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name={focused ? 'heart' : 'heart-outline'} color={color} focused={focused} />
           ),
         }}
       />
@@ -39,11 +41,11 @@ export default function TabsLayout() {
         name="tienda"
         options={{
           title: 'Tienda',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
               name={focused ? 'bag-handle' : 'bag-handle-outline'}
               color={color}
-              size={size}
+              focused={focused}
             />
           ),
         }}
@@ -52,8 +54,8 @@ export default function TabsLayout() {
         name="perfil"
         options={{
           title: 'Perfil',
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} color={color} size={size} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name={focused ? 'person' : 'person-outline'} color={color} focused={focused} />
           ),
         }}
       />
