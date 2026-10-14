@@ -40,7 +40,11 @@ export default function TabsLayout() {
         options={{
           title: 'Tienda',
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons name={focused ? 'bag-handle' : 'bag-handle-outline'} color={color} size={size} />
+            <Ionicons
+              name={focused ? 'bag-handle' : 'bag-handle-outline'}
+              color={color}
+              size={size}
+            />
           ),
         }}
       />
