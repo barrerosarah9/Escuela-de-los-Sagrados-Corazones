@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, type Ref } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { colors, fonts, radius } from '../theme';
 import { AppText } from './app-text';
@@ -8,9 +8,19 @@ type Props = TextInputProps & {
   label: string;
   error?: string;
   accessory?: ReactNode;
+  ref?: Ref<TextInput>;
 };
 
-export function TextField({ label, error, accessory, style, onFocus, onBlur, ...rest }: Props) {
+export function TextField({
+  label,
+  error,
+  accessory,
+  ref,
+  style,
+  onFocus,
+  onBlur,
+  ...rest
+}: Props) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -18,6 +28,7 @@ export function TextField({ label, error, accessory, style, onFocus, onBlur, ...
       <AppText variant="label">{label}</AppText>
       <View>
         <TextInput
+          ref={ref}
           accessibilityLabel={label}
           placeholderTextColor={colors.placeholder}
           style={[

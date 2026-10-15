@@ -10,6 +10,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { SessionProvider, useSession } from '../lib/session';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,20 +23,36 @@ export default function RootLayout() {
     Newsreader_500Medium,
   });
 
+  return (
+    <SessionProvider>
+      <RootNavigator fontsReady={loaded || Boolean(error)} />
+      <StatusBar style="dark" />
+    </SessionProvider>
+  );
+}
+
+function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
+  const { session, isLoading } = useSession();
+  const ready = fontsReady && !isLoading;
+
   useEffect(() => {
-    if (loaded || error) {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [loaded, error]);
+  }, [ready]);
 
-  if (!loaded && !error) {
+  if (!ready) {
     return null;
   }
 
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="dark" />
-    </>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Protected guard={Boolean(session)}>
+        <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
+      <Stack.Protected guard={!session}>
+        <Stack.Screen name="(auth)" />
+      </Stack.Protected>
+    </Stack>
   );
 }
