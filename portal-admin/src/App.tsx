@@ -1,6 +1,7 @@
 import { FormEvent, ReactNode, useMemo, useState } from "react";
 import { createHashRouter, RouterProvider, useLocation, useNavigate } from "react-router";
 import logo from "./logo.webp";
+import { iniciales, ingresarAdministrador, type Administrador } from "./lib/auth";
 
 type Section =
   | "Resumen"
@@ -85,15 +86,20 @@ function Toast({ text }: { text: string }) {
   return <div className="toast"><span><Icon name="check" size={16}/></span>{text}</div>;
 }
 
-function Login({ onLogin }: { onLogin: () => void }) {
+function Login({ onLogin }: { onLogin: (administrador: Administrador) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const submit = (e: FormEvent) => {
+  const [loading, setLoading] = useState(false);
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (email === "admin@apostolado.co" && password === "1234") onLogin();
-    else if (email === "test@gmail.com" && password === "1234") setError("Esta cuenta no tiene permisos de administración");
-    else setError("Correo o contraseña incorrectos");
+    if (loading) return;
+    setError("");
+    setLoading(true);
+    const resultado = await ingresarAdministrador(email, password);
+    setLoading(false);
+    if (resultado.estado === "ok") onLogin(resultado.administrador);
+    else setError(resultado.mensaje);
   };
   return <main className="login-shell">
     <section className="login-brand">
@@ -111,8 +117,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
         {error && <div className="error-banner"><span>!</span>{error}</div>}
         <Input label="Correo electrónico" type="email" placeholder="nombre@correo.com" value={email} onChange={setEmail}/>
         <Input label="Contraseña" type="password" placeholder="Ingresa tu contraseña" value={password} onChange={setPassword}/>
-        <Button type="submit">Ingresar al portal <Icon name="chevron" size={17}/></Button>
-        <div className="demo-note">Demo: admin@apostolado.co · Contraseña: 1234</div>
+        <Button type="submit" disabled={loading}>{loading ? "Ingresando…" : <>Ingresar al portal <Icon name="chevron" size={17}/></>}</Button>
       </form>
     </section>
   </main>;
@@ -676,7 +681,7 @@ function PortalApp() {
   const location = useLocation();
   const navigate = useNavigate();
   const libraryType = (Object.keys(libraryMeta) as LibraryTab[]).find(tab => location.pathname === `/biblioteca/${libraryMeta[tab].slug}`) || null;
-  const [logged, setLogged] = useState(false);
+  const [admin, setAdmin] = useState<Administrador | null>(null);
   const [section, setSection] = useState<Section>(location.pathname.startsWith("/biblioteca") ? "Biblioteca" : "Resumen");
   const [modal, setModal] = useState<{title:string;text:string;ok?:()=>void}|null>(null);
   const [toast, setToast] = useState("");
@@ -693,15 +698,15 @@ function PortalApp() {
     if(section==="Tienda") return <Books confirm={confirm} notify={notify}/>;
     return <Orders notify={notify}/>;
   },[section, location.pathname]);
-  if(!logged) return <Login onLogin={()=>setLogged(true)}/>;
+  if(!admin) return <Login onLogin={setAdmin}/>;
   return <div className="app-shell">
     <aside>
       <div className="side-brand"><img className="side-logo" src={logo} alt=""/><div><small className="side-kicker">Escuela de los</small><b>Sagrados Corazones</b></div></div>
       <nav>{sections.map(s=><button className={section===s.name?"active":""} key={s.name} onClick={()=>{setSection(s.name);navigate(s.name==="Biblioteca"?"/biblioteca":"/");}}><Icon name={s.icon}/><span>{s.name}</span>{section===s.name&&<i/>}</button>)}</nav>
       <div className="side-account">
-        <span className="avatar">AS</span>
-        <div><b>Administrador SC</b><small>admin@apostolado.co</small></div>
-        <button onClick={()=>setLogged(false)}>Cerrar sesión</button>
+        <span className="avatar">{iniciales(admin.nombre)}</span>
+        <div><b>{admin.nombre}</b><small>{admin.correo}</small></div>
+        <button onClick={()=>setAdmin(null)}>Cerrar sesión</button>
       </div>
     </aside>
     <div className="main-wrap">
