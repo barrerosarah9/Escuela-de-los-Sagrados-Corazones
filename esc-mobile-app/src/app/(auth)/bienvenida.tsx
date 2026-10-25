@@ -1,28 +1,12 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../../components/app-text';
 import { Button } from '../../components/button';
 import { Logo } from '../../components/logo';
-import { iniciarSesionConGoogle } from '../../lib/auth-google';
 import { colors, spacing } from '../../theme';
 
 export default function BienvenidaScreen() {
-  const [conectandoGoogle, setConectandoGoogle] = useState(false);
-
-  async function continuarConGoogle() {
-    if (conectandoGoogle) {
-      return;
-    }
-    setConectandoGoogle(true);
-    const resultado = await iniciarSesionConGoogle();
-    setConectandoGoogle(false);
-    if (resultado.estado === 'error') {
-      Alert.alert('No pudimos continuar con Google', resultado.mensaje);
-    }
-  }
-
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.glow} />
@@ -43,11 +27,6 @@ export default function BienvenidaScreen() {
       <View style={styles.actions}>
         <Button title="Iniciar sesión" onPress={() => router.push('/ingreso')} />
         <Button title="Crear cuenta" variant="secondary" onPress={() => router.push('/registro')} />
-        <Button
-          title={conectandoGoogle ? 'Conectando con Google…' : 'Continuar con Google'}
-          variant="social"
-          onPress={continuarConGoogle}
-        />
       </View>
     </SafeAreaView>
   );
