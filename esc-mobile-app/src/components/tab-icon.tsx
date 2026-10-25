@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { type ColorValue, StyleSheet, View } from 'react-native';
 import { colors } from '../theme';
 
 type Props = {
   name: ComponentProps<typeof Ionicons>['name'];
-  color: string;
+  color: ColorValue;
   focused: boolean;
 };
 
