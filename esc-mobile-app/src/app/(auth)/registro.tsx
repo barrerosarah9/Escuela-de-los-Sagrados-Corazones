@@ -5,7 +5,6 @@ import { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   View,
@@ -19,6 +18,8 @@ import { FormAlert } from '../../components/form-alert';
 import { Logo } from '../../components/logo';
 import { PasswordField } from '../../components/password-field';
 import { TextField } from '../../components/text-field';
+import { iniciarSesionConGoogle } from '../../lib/auth-google';
+import { MENSAJE_CUENTA_BLOQUEADA } from '../../lib/cuenta';
 import { supabase } from '../../lib/supabase';
 import {
   normalizarCorreo,
@@ -51,6 +52,7 @@ export default function RegistroScreen() {
   const [erroresServidor, setErroresServidor] = useState<ErroresRegistro>({});
   const [aviso, setAviso] = useState<AvisoRegistro | null>(null);
   const [cargando, setCargando] = useState(false);
+  const [conectandoGoogle, setConectandoGoogle] = useState(false);
 
   const correoRef = useRef<TextInput>(null);
   const contrasenaRef = useRef<TextInput>(null);
@@ -153,6 +155,23 @@ export default function RegistroScreen() {
     );
   };
 
+  const continuarConGoogle = async () => {
+    if (cargando || conectandoGoogle) {
+      return;
+    }
+
+    setAviso(null);
+    setConectandoGoogle(true);
+    const resultado = await iniciarSesionConGoogle();
+    setConectandoGoogle(false);
+
+    if (resultado.estado === 'bloqueada') {
+      Alert.alert('Cuenta bloqueada', MENSAJE_CUENTA_BLOQUEADA);
+    } else if (resultado.estado === 'error') {
+      Alert.alert('No pudimos continuar con Google', resultado.mensaje);
+    }
+  };
+
   const irAIngreso = () => {
     router.push({ pathname: '/ingreso', params: { correo: normalizarCorreo(datos.correo) } });
   };
@@ -238,7 +257,12 @@ export default function RegistroScreen() {
               onSubmitEditing={registrarse}
             />
 
-            <Button title="Registrarse" loading={cargando} onPress={registrarse} />
+            <Button
+              title="Registrarse"
+              loading={cargando}
+              disabled={conectandoGoogle}
+              onPress={registrarse}
+            />
 
             {aviso ? (
               <FormAlert
@@ -274,18 +298,18 @@ export default function RegistroScreen() {
                 title="Google"
                 variant="social"
                 icon={<Ionicons name="logo-google" size={18} color={colors.text} />}
-                onPress={() => proximamente('Google')}
+                loading={conectandoGoogle}
+                disabled={cargando}
+                onPress={continuarConGoogle}
                 style={styles.socialButton}
               />
-              {Platform.OS === 'ios' ? (
-                <Button
-                  title="Apple"
-                  variant="social"
-                  icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
-                  onPress={() => proximamente('Apple')}
-                  style={styles.socialButton}
-                />
-              ) : null}
+              <Button
+                title="Apple"
+                variant="social"
+                icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
+                onPress={() => proximamente('Apple')}
+                style={styles.socialButton}
+              />
             </View>
 
             <AppText style={styles.switchCopy}>
