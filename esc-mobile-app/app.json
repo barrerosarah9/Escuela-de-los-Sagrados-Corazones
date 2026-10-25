@@ -5,12 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "escmobileapp",
+    "scheme": "sagradoscorazones",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.sagradoscorazones.app"
     },
     "android": {
+      "package": "com.sagradoscorazones.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -35,7 +37,13 @@
       ],
       "expo-status-bar",
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.933494753799-3t8fv06k0b7djckcujsjv81rohqco7cc"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
