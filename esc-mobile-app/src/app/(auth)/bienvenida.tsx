@@ -1,12 +1,20 @@
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../../components/app-text';
 import { Button } from '../../components/button';
 import { Logo } from '../../components/logo';
+import { consumirIrAIngreso } from '../../lib/cerrar-sesion';
 import { colors, spacing } from '../../theme';
 
 export default function BienvenidaScreen() {
+  useEffect(() => {
+    if (consumirIrAIngreso()) {
+      router.push('/ingreso');
+    }
+  }, []);
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.glow} />
