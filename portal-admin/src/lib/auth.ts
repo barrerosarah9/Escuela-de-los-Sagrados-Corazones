@@ -47,9 +47,43 @@ function mensajeDeError(error: Error) {
   return MENSAJES_INGRESO.desconocido;
 }
 
-async function rechazar(mensaje: string): Promise<ResultadoIngreso> {
+export async function cerrarSesion() {
   await supabase.auth.signOut({ scope: 'local' });
+}
+
+async function rechazar(mensaje: string): Promise<ResultadoIngreso> {
+  await cerrarSesion();
   return { estado: 'error', mensaje };
+}
+
+async function validarAdministrador(
+  usuarioId: string,
+  correoUsuario: string,
+): Promise<ResultadoIngreso> {
+  const { data: perfil, error } = await supabase
+    .from('perfiles')
+    .select('nombre, correo, rol, bloqueado')
+    .eq('id', usuarioId)
+    .maybeSingle();
+
+  if (error || !perfil) {
+    return rechazar(MENSAJES_INGRESO.desconocido);
+  }
+  if (perfil.rol !== 'administrador') {
+    return rechazar(MENSAJES_INGRESO.sinPermisos);
+  }
+  if (perfil.bloqueado) {
+    return rechazar(MENSAJES_INGRESO.bloqueada);
+  }
+
+  return {
+    estado: 'ok',
+    administrador: {
+      id: usuarioId,
+      nombre: perfil.nombre || correoUsuario,
+      correo: perfil.correo || correoUsuario,
+    },
+  };
 }
 
 export async function ingresarAdministrador(
@@ -73,34 +107,33 @@ export async function ingresarAdministrador(
     if (error) {
       return { estado: 'error', mensaje: mensajeDeError(error) };
     }
-
-    const { data: perfil, error: errorPerfil } = await supabase
-      .from('perfiles')
-      .select('nombre, correo, rol, bloqueado')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    if (errorPerfil || !perfil) {
-      return rechazar(MENSAJES_INGRESO.desconocido);
-    }
-    if (perfil.rol !== 'administrador') {
-      return rechazar(MENSAJES_INGRESO.sinPermisos);
-    }
-    if (perfil.bloqueado) {
-      return rechazar(MENSAJES_INGRESO.bloqueada);
-    }
-
-    return {
-      estado: 'ok',
-      administrador: {
-        id: data.user.id,
-        nombre: perfil.nombre || correoNormalizado,
-        correo: perfil.correo || correoNormalizado,
-      },
-    };
+    return await validarAdministrador(data.user.id, correoNormalizado);
   } catch {
     return rechazar(MENSAJES_INGRESO.sinConexion);
   }
+}
+
+export async function restaurarSesion(): Promise<Administrador | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const usuario = data.session?.user;
+    if (!usuario) {
+      return null;
+    }
+    const resultado = await validarAdministrador(usuario.id, usuario.email ?? '');
+    return resultado.estado === 'ok' ? resultado.administrador : null;
+  } catch {
+    return null;
+  }
+}
+
+export function escucharCierreDeSesion(alCerrar: () => void) {
+  const { data } = supabase.auth.onAuthStateChange((evento) => {
+    if (evento === 'SIGNED_OUT') {
+      alCerrar();
+    }
+  });
+  return () => data.subscription.unsubscribe();
 }
 
 export function iniciales(nombre: string) {

@@ -1,7 +1,7 @@
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createHashRouter, RouterProvider, useLocation, useNavigate } from "react-router";
 import logo from "./logo.webp";
-import { iniciales, ingresarAdministrador, type Administrador } from "./lib/auth";
+import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador, restaurarSesion, type Administrador } from "./lib/auth";
 
 type Section =
   | "Resumen"
@@ -682,6 +682,36 @@ function PortalApp() {
   const navigate = useNavigate();
   const libraryType = (Object.keys(libraryMeta) as LibraryTab[]).find(tab => location.pathname === `/biblioteca/${libraryMeta[tab].slug}`) || null;
   const [admin, setAdmin] = useState<Administrador | null>(null);
+  const [verificando, setVerificando] = useState(true);
+  const destino = useRef("/");
+  useEffect(() => {
+    let activo = true;
+    restaurarSesion().then(administrador => {
+      if (!activo) return;
+      setAdmin(administrador);
+      setVerificando(false);
+    });
+    const dejarDeEscuchar = escucharCierreDeSesion(() => setAdmin(null));
+    return () => {
+      activo = false;
+      dejarDeEscuchar();
+    };
+  }, []);
+  useEffect(() => {
+    if (verificando) return;
+    if (!admin && location.pathname !== "/ingreso") {
+      destino.current = location.pathname;
+      navigate("/ingreso", { replace: true });
+    } else if (admin && location.pathname === "/ingreso") {
+      navigate(destino.current || "/", { replace: true });
+    }
+  }, [admin, verificando, location.pathname, navigate]);
+  const salir = async () => {
+    await cerrarSesion();
+    destino.current = "/";
+    setSection("Resumen");
+    setAdmin(null);
+  };
   const [section, setSection] = useState<Section>(location.pathname.startsWith("/biblioteca") ? "Biblioteca" : "Resumen");
   const [modal, setModal] = useState<{title:string;text:string;ok?:()=>void}|null>(null);
   const [toast, setToast] = useState("");
@@ -698,6 +728,7 @@ function PortalApp() {
     if(section==="Tienda") return <Books confirm={confirm} notify={notify}/>;
     return <Orders notify={notify}/>;
   },[section, location.pathname]);
+  if(verificando) return <div className="login-shell" style={{display:"grid",placeItems:"center",color:"var(--warm)"}}>Cargando…</div>;
   if(!admin) return <Login onLogin={setAdmin}/>;
   return <div className="app-shell">
     <aside>
@@ -706,7 +737,7 @@ function PortalApp() {
       <div className="side-account">
         <span className="avatar">{iniciales(admin.nombre)}</span>
         <div><b>{admin.nombre}</b><small>{admin.correo}</small></div>
-        <button onClick={()=>setAdmin(null)}>Cerrar sesión</button>
+        <button onClick={()=>confirm("¿Cerrar sesión?","Tendrás que volver a ingresar con tu correo y contraseña para gestionar el portal.",salir)}>Cerrar sesión</button>
       </div>
     </aside>
     <div className="main-wrap">
