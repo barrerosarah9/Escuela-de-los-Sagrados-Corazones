@@ -16,7 +16,7 @@ export function normalizarCorreo(correo: string) {
   return correo.trim().toLowerCase();
 }
 
-function validarNombre(nombre: string) {
+export function validarNombre(nombre: string) {
   const limpio = nombre.trim();
   if (!limpio) return 'El nombre es obligatorio.';
   if (limpio.length > LONGITUD_MAXIMA_NOMBRE) {
