@@ -9,7 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  type TextInput,
+  type TextInputInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../components/app-text';
@@ -62,7 +62,7 @@ export default function NuevaContrasenaScreen() {
   const [aviso, setAviso] = useState<Aviso | null>(null);
   const [guardando, setGuardando] = useState(false);
 
-  const confirmacionRef = useRef<TextInput>(null);
+  const confirmacionRef = useRef<TextInputInstance>(null);
   const procesado = useRef(false);
 
   useEffect(() => {
