@@ -295,7 +295,9 @@ const styles = StyleSheet.create({
   avatarText: {
     fontFamily: fonts.serif,
     fontSize: 32,
+    lineHeight: 40,
     color: colors.white,
+    includeFontPadding: false,
   },
   name: {
     fontFamily: fonts.serif,
