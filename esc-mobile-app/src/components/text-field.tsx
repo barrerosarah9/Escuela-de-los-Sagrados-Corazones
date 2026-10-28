@@ -1,6 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState, type ReactNode, type Ref } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import {
+  StyleSheet,
+  TextInput,
+  View,
+  type TextInputInstance,
+  type TextInputProps,
+} from 'react-native';
 import { colors, fonts, radius } from '../theme';
 import { AppText } from './app-text';
 
@@ -8,7 +14,7 @@ type Props = TextInputProps & {
   label: string;
   error?: string;
   accessory?: ReactNode;
-  ref?: Ref<TextInput>;
+  ref?: Ref<TextInputInstance>;
 };
 
 export function TextField({

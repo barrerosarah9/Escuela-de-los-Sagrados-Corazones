@@ -8,7 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  type TextInput,
+  type TextInputInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../../components/app-text';
@@ -66,7 +66,7 @@ export default function IngresoScreen() {
   const [cargando, setCargando] = useState(false);
   const [conectandoGoogle, setConectandoGoogle] = useState(false);
 
-  const contrasenaRef = useRef<TextInput>(null);
+  const contrasenaRef = useRef<TextInputInstance>(null);
 
   const ocupado = cargando || conectandoGoogle;
   const errores: ErroresIngreso = intentado
