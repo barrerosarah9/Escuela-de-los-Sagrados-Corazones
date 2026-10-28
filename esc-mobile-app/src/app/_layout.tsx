@@ -50,6 +50,7 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
       <Stack.Protected guard={Boolean(session)} redirectTo="/bienvenida">
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="configuracion" />
+        <Stack.Screen name="editar-perfil" />
       </Stack.Protected>
       <Stack.Protected guard={!session} redirectTo="/">
         <Stack.Screen name="(auth)" />
