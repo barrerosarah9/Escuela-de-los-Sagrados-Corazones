@@ -7,7 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
-  type TextInput,
+  type TextInputInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../components/app-text';
@@ -37,7 +37,7 @@ const MENSAJES_ERROR: Record<MotivoErrorPerfil, string> = {
 export default function EditarPerfilScreen() {
   const { session } = useSession();
   const usuarioId = session?.user.id;
-  const telefonoRef = useRef<TextInput>(null);
+  const telefonoRef = useRef<TextInputInstance>(null);
   const [original, setOriginal] = useState<DatosPerfilEditables | null>(null);
   const [datos, setDatos] = useState<DatosPerfilEditables>({ nombre: '', telefono: '' });
   const [errores, setErrores] = useState<ErroresPerfil>({});
