@@ -10,9 +10,11 @@ type Props = {
 };
 
 export function TabIcon({ name, color, focused }: Props) {
+  const colorIcono = typeof color === 'string' ? color : colors.tabInactive;
+
   return (
     <View style={[styles.pill, focused && styles.pillActive]}>
-      <Ionicons name={name} size={20} color={color} />
+      <Ionicons name={name} size={20} color={colorIcono} />
     </View>
   );
 }
