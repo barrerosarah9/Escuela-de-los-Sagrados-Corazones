@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   View,
@@ -29,6 +30,8 @@ import {
   type ErroresRegistro,
 } from '../../lib/validaciones-registro';
 import { colors, fonts, spacing } from '../../theme';
+
+const MOSTRAR_APPLE = Platform.OS === 'ios';
 
 type AvisoRegistro = 'duplicado' | 'sin-conexion' | 'limite' | 'desconocido';
 
@@ -303,13 +306,15 @@ export default function RegistroScreen() {
                 onPress={continuarConGoogle}
                 style={styles.socialButton}
               />
-              <Button
-                title="Apple"
-                variant="social"
-                icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
-                onPress={() => proximamente('Apple')}
-                style={styles.socialButton}
-              />
+              {MOSTRAR_APPLE ? (
+                <Button
+                  title="Apple"
+                  variant="social"
+                  icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
+                  onPress={() => proximamente('Apple')}
+                  style={styles.socialButton}
+                />
+              ) : null}
             </View>
 
             <AppText style={styles.switchCopy}>

@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   View,
@@ -23,6 +24,8 @@ import { cuentaBloqueada, MENSAJE_CUENTA_BLOQUEADA } from '../../lib/cuenta';
 import { supabase } from '../../lib/supabase';
 import { normalizarCorreo } from '../../lib/validaciones-registro';
 import { colors, fonts, spacing } from '../../theme';
+
+const MOSTRAR_APPLE = Platform.OS === 'ios';
 
 type AvisoIngreso = 'credenciales' | 'sin-conexion' | 'limite' | 'desconocido';
 
@@ -271,14 +274,16 @@ export default function IngresoScreen() {
                 onPress={continuarConGoogle}
                 style={styles.socialButton}
               />
-              <Button
-                title="Apple"
-                variant="social"
-                icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
-                disabled={ocupado}
-                onPress={continuarConApple}
-                style={styles.socialButton}
-              />
+              {MOSTRAR_APPLE ? (
+                <Button
+                  title="Apple"
+                  variant="social"
+                  icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
+                  disabled={ocupado}
+                  onPress={continuarConApple}
+                  style={styles.socialButton}
+                />
+              ) : null}
             </View>
 
             <AppText style={styles.switchCopy}>
