@@ -5,10 +5,11 @@ import { useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   View,
-  type TextInput,
+  type TextInputInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../../components/app-text';
@@ -29,6 +30,8 @@ import {
   type ErroresRegistro,
 } from '../../lib/validaciones-registro';
 import { colors, fonts, spacing } from '../../theme';
+
+const MOSTRAR_APPLE = Platform.OS === 'ios';
 
 type AvisoRegistro = 'duplicado' | 'sin-conexion' | 'limite' | 'desconocido';
 
@@ -54,9 +57,9 @@ export default function RegistroScreen() {
   const [cargando, setCargando] = useState(false);
   const [conectandoGoogle, setConectandoGoogle] = useState(false);
 
-  const correoRef = useRef<TextInput>(null);
-  const contrasenaRef = useRef<TextInput>(null);
-  const confirmacionRef = useRef<TextInput>(null);
+  const correoRef = useRef<TextInputInstance>(null);
+  const contrasenaRef = useRef<TextInputInstance>(null);
+  const confirmacionRef = useRef<TextInputInstance>(null);
 
   const errores: ErroresRegistro = {
     ...erroresServidor,
@@ -303,13 +306,15 @@ export default function RegistroScreen() {
                 onPress={continuarConGoogle}
                 style={styles.socialButton}
               />
-              <Button
-                title="Apple"
-                variant="social"
-                icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
-                onPress={() => proximamente('Apple')}
-                style={styles.socialButton}
-              />
+              {MOSTRAR_APPLE ? (
+                <Button
+                  title="Apple"
+                  variant="social"
+                  icon={<Ionicons name="logo-apple" size={20} color={colors.text} />}
+                  onPress={() => proximamente('Apple')}
+                  style={styles.socialButton}
+                />
+              ) : null}
             </View>
 
             <AppText style={styles.switchCopy}>
