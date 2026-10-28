@@ -47,11 +47,11 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={Boolean(session)}>
+      <Stack.Protected guard={Boolean(session)} redirectTo="/bienvenida">
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="configuracion" />
       </Stack.Protected>
-      <Stack.Protected guard={!session}>
+      <Stack.Protected guard={!session} redirectTo="/">
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
