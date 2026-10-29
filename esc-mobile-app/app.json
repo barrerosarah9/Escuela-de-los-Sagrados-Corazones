@@ -43,7 +43,16 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.933494753799-3t8fv06k0b7djckcujsjv81rohqco7cc"
         }
-      ]
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Usamos tus fotos para que elijas tu foto de perfil.",
+          "cameraPermission": "Usamos la cámara para que tomes tu foto de perfil.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
