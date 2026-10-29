@@ -12,6 +12,7 @@ export type Perfil = {
 export type CambiosPerfil = {
   nombre: string;
   telefono: string | null;
+  foto_path?: string | null;
 };
 
 export type MotivoErrorPerfil = 'sin_conexion' | 'datos_invalidos' | 'no_guardado';
