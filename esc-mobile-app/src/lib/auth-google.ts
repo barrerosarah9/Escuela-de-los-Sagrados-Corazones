@@ -1,5 +1,5 @@
 import { isAuthApiError } from '@supabase/supabase-js';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { TurboModuleRegistry } from 'react-native';
 import { cuentaBloqueada } from './cuenta';
 import { supabase } from './supabase';
 
@@ -8,9 +8,9 @@ type ModuloGoogle = typeof import('@react-native-google-signin/google-signin');
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
-const enExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const sinModuloNativo = TurboModuleRegistry.get('RNGoogleSignin') == null;
 
-const MENSAJE_EXPO_GO =
+const MENSAJE_SIN_MODULO =
   'El inicio de sesión con Google no funciona en Expo Go. Abre la app desde el development build.';
 
 let moduloCargado: ModuloGoogle | null = null;
@@ -54,8 +54,8 @@ function mensajeDeError(error: unknown) {
 }
 
 export async function iniciarSesionConGoogle(): Promise<ResultadoGoogle> {
-  if (enExpoGo) {
-    return { estado: 'error', mensaje: MENSAJE_EXPO_GO };
+  if (sinModuloNativo) {
+    return { estado: 'error', mensaje: MENSAJE_SIN_MODULO };
   }
 
   try {
@@ -110,7 +110,7 @@ export async function iniciarSesionConGoogle(): Promise<ResultadoGoogle> {
 }
 
 export async function cerrarSesionDeGoogle() {
-  if (enExpoGo) {
+  if (sinModuloNativo) {
     return;
   }
   try {
