@@ -4,18 +4,18 @@ import { useCallback, useState, type ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   RefreshControl,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
 import { AppText } from '../../components/app-text';
+import { Avatar } from '../../components/avatar';
 import { Button } from '../../components/button';
 import { FormAlert } from '../../components/form-alert';
 import { MenuRow, MenuSeparator } from '../../components/menu-row';
 import { cerrarSesion, confirmarCierreDeSesion } from '../../lib/cerrar-sesion';
-import { obtenerPerfil, obtenerRacha, obtenerUrlFoto, type Perfil } from '../../lib/perfil';
+import { obtenerPerfil, obtenerRacha, type Perfil } from '../../lib/perfil';
 import { useSession } from '../../lib/session';
 import { colors, fonts, spacing } from '../../theme';
 
@@ -37,15 +37,6 @@ const MESES = [
 const DESFASE_BOGOTA_MS = 5 * 3_600_000;
 
 type IconoDato = ComponentProps<typeof Ionicons>['name'];
-
-function obtenerIniciales(nombre: string) {
-  const palabras = nombre.trim().split(/\s+/).filter(Boolean);
-  const iniciales = palabras
-    .slice(0, 2)
-    .map((palabra) => palabra[0])
-    .join('');
-  return iniciales.toUpperCase() || '?';
-}
 
 function formatearMiembroDesde(creadoEn: string) {
   const fecha = new Date(Date.parse(creadoEn) - DESFASE_BOGOTA_MS);
@@ -79,7 +70,6 @@ export default function PerfilScreen() {
   const { session } = useSession();
   const usuarioId = session?.user.id;
   const [perfil, setPerfil] = useState<Perfil | null>(null);
-  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [racha, setRacha] = useState<number | null>(null);
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
@@ -90,9 +80,7 @@ export default function PerfilScreen() {
     if (!usuarioId) return;
     setErrorCarga(false);
     try {
-      const datos = await obtenerPerfil(usuarioId);
-      setPerfil(datos);
-      setFotoUrl(await obtenerUrlFoto(datos?.foto_path ?? null));
+      setPerfil(await obtenerPerfil(usuarioId));
     } catch {
       setErrorCarga(true);
     }
@@ -152,17 +140,7 @@ export default function PerfilScreen() {
       }
     >
       <View style={styles.header}>
-        {fotoUrl ? (
-          <Image
-            source={{ uri: fotoUrl }}
-            style={styles.avatar}
-            accessibilityLabel="Foto de perfil"
-          />
-        ) : (
-          <View style={styles.avatar}>
-            <AppText style={styles.avatarText}>{obtenerIniciales(nombre || correo)}</AppText>
-          </View>
-        )}
+        <Avatar nombre={nombre || correo} fotoPath={perfil?.foto_path} style={styles.avatar} />
         <AppText style={styles.name}>{nombre || 'Tu perfil'}</AppText>
       </View>
 
@@ -235,7 +213,7 @@ export default function PerfilScreen() {
           <MenuRow
             icon="person-outline"
             title="Editar perfil"
-            description="Nombre y teléfono"
+            description="Foto, nombre y teléfono"
             disabled={!perfil}
             onPress={() => router.push('/editar-perfil')}
           />
@@ -283,21 +261,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
     marginBottom: spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
     boxShadow: '0px 0px 0px 8px rgba(161, 30, 33, 0.08)',
-  },
-  avatarText: {
-    fontFamily: fonts.serif,
-    fontSize: 32,
-    lineHeight: 40,
-    color: colors.white,
-    includeFontPadding: false,
   },
   name: {
     fontFamily: fonts.serif,
