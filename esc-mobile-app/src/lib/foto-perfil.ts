@@ -1,3 +1,4 @@
+import { File } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert, Linking } from 'react-native';
@@ -31,6 +32,7 @@ type ErrorStorage = { message: string; statusCode?: string; status?: number };
 
 const LADO_MAXIMO_PX = 800;
 const CALIDAD_JPEG = 0.7;
+const TAMANO_MINIMO_FOTO_BYTES = 1024;
 
 const OPCIONES_SELECTOR: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
@@ -106,12 +108,13 @@ export function avisarSinPermiso(origen: OrigenFoto) {
 }
 
 export async function subirFoto(usuarioId: string, uri: string): Promise<ResultadoSubida> {
-  let datos: ArrayBuffer;
+  let datos: Uint8Array;
   try {
-    datos = await (await fetch(uri)).arrayBuffer();
+    datos = await new File(uri).bytes();
   } catch {
     return { ok: false, motivo: 'no_subida' };
   }
+  if (datos.byteLength < TAMANO_MINIMO_FOTO_BYTES) return { ok: false, motivo: 'no_subida' };
   if (datos.byteLength > TAMANO_MAXIMO_FOTO_BYTES) return { ok: false, motivo: 'muy_grande' };
 
   const fotoPath = `${usuarioId}/${Date.now()}.jpg`;
