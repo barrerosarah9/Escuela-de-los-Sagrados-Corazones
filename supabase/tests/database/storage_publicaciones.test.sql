@@ -57,8 +57,8 @@ set local request.jwt.claims to '{"sub": "cccccccc-0000-4000-8000-000000000002",
 select is(
   (select count(*)::int from storage.objects
    where bucket_id = 'publicaciones' and name = 'prueba/uno.jpg'),
-  1,
-  'Usuario: lista las imágenes de publicaciones'
+  0,
+  'Usuario: no lista las imágenes de publicaciones'
 );
 
 select throws_ok(

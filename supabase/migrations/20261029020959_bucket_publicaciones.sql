@@ -13,11 +13,14 @@ set
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
-create policy "publicaciones: listar con sesión"
+create policy "publicaciones: listar si es administrador"
 on storage.objects
 for select
 to authenticated
-using (bucket_id = 'publicaciones');
+using (
+  bucket_id = 'publicaciones'
+  and public.es_admin()
+);
 
 create policy "publicaciones: subir si es administrador"
 on storage.objects
