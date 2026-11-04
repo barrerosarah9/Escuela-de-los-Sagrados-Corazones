@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { createHashRouter, RouterProvider, useLocation, useNavigate } from "react-router";
 import logo from "./logo.webp";
 import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador, restaurarSesion, type Administrador } from "./lib/auth";
+import { crearPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
   | "Resumen"
@@ -161,80 +162,119 @@ function Empty({ title, text }: { title: string; text: string }) {
   return <div className="empty"><div className="empty-icon"><Icon name="search"/></div><b>{title}</b><p>{text}</p></div>;
 }
 
-type Post = { id: number; date: string; title: string; text: string; comments: number; likes: number; color: string; images: string[] };
-const initialPosts: Post[] = [
-  { id: 1, date: "12 OCT 2026", title: "Una invitación a reparar desde el amor", text: "Hoy recordamos que cada pequeño acto de amor puede ser una ofrenda de reparación al Sagrado Corazón.", comments: 24, likes: 186, color: "post-one", images: ["reparar.jpg"] },
-  { id: 2, date: "8 OCT 2026", title: "Hora Santa: acompáñanos esta noche", text: "Unámonos en oración ante Jesús Sacramentado. Iniciamos a las 7:45 p. m. por Google Meet.", comments: 18, likes: 143, color: "post-two", images: [] },
-  { id: 3, date: "2 OCT 2026", title: "Primer viernes del mes", text: "Ofrezcamos esta jornada en reparación y consuelo al Corazón de Jesús.", comments: 31, likes: 224, color: "post-three", images: ["primer-viernes.png"] },
-];
+const fechaPublicacion = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getDate()} ${monthNames[d.getMonth()].slice(0, 3).toUpperCase()} ${d.getFullYear()}`;
+};
+const tituloPublicacion = (texto: string) => texto.split(/[.!?\n]/)[0].trim().slice(0, 60) || "Publicación con imágenes";
+const colores = ["post-one", "post-two", "post-three"];
 
-function Publications({ notify, confirm }: { notify: (s: string) => void; confirm: (title: string, text: string, ok?: () => void) => void }) {
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
-  const [editing, setEditing] = useState<Post | "new" | null>(null);
-  const [detail, setDetail] = useState<Post | null>(null);
-  const [removedComments, setRemovedComments] = useState<Record<number, string[]>>({});
+type ImagenNueva = { id: string; archivo: File; vista: string };
+
+function Miniatura({ publicacion, className }: { publicacion: Publicacion; className: string }) {
+  const primera = publicacion.imagenes[0];
+  if (!primera) return <div className={`${className} ${colores[publicacion.id % colores.length]}`}/>;
+  return <div className={`${className} con-imagen`}><img src={urlImagen(primera)} alt=""/></div>;
+}
+
+function Publications({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
+  const [posts, setPosts] = useState<Publicacion[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [creando, setCreando] = useState(false);
+  const [detail, setDetail] = useState<Publicacion | null>(null);
   const [text, setText] = useState("");
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<ImagenNueva[]>([]);
   const [error, setError] = useState("");
   const [imageError, setImageError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [arrastrando, setArrastrando] = useState(false);
   const [search, setSearch] = useState("");
   const [order, setOrder] = useState("Más recientes");
-  const open = (post: Post | "new") => {
-    setEditing(post);
-    setText(post === "new" ? "" : post.text);
-    setImages(post === "new" ? [] : post.images);
+  const imagesRef = useRef<ImagenNueva[]>([]);
+  imagesRef.current = images;
+
+  useEffect(() => {
+    let activo = true;
+    listarPublicaciones()
+      .then(lista => { if (activo) setPosts(lista); })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
+      .finally(() => { if (activo) setCargando(false); });
+    return () => { activo = false; };
+  }, []);
+
+  useEffect(() => () => imagesRef.current.forEach(i => URL.revokeObjectURL(i.vista)), []);
+
+  const limpiarFormulario = () => {
+    images.forEach(i => URL.revokeObjectURL(i.vista));
+    setImages([]);
+    setText("");
     setError("");
     setImageError("");
   };
+  const abrir = () => { limpiarFormulario(); setCreando(true); };
+  const cerrar = () => { if (guardando) return; limpiarFormulario(); setCreando(false); };
+
   const pick = (files: FileList | null) => {
     if (!files) return;
-    const valid: string[] = [];
-    const rejected: string[] = [];
-    Array.from(files).forEach(file => {
-      if (!["image/jpeg", "image/png"].includes(file.type)) rejected.push(`${file.name}: solo se aceptan JPG o PNG`);
-      else if (file.size > 5 * 1024 * 1024) rejected.push(`${file.name}: supera los 5 MB`);
-      else valid.push(file.name);
+    const validas: ImagenNueva[] = [];
+    const rechazadas: string[] = [];
+    Array.from(files).forEach(archivo => {
+      const problema = validarImagen(archivo);
+      if (problema) rechazadas.push(problema);
+      else if (images.length + validas.length >= MAXIMO_IMAGENES) rechazadas.push(`${archivo.name}: ${MENSAJES_PUBLICACION.demasiadas}`);
+      else validas.push({ id: crypto.randomUUID(), archivo, vista: URL.createObjectURL(archivo) });
     });
-    setImages([...images, ...valid]);
-    setImageError(rejected.join(" · "));
-    if (valid.length) setError("");
+    setImages([...images, ...validas]);
+    setImageError(rechazadas.join(" · "));
+    if (validas.length) setError("");
   };
-  const save = () => {
-    if (!text.trim() && !images.length) { setError("Agrega texto o al menos una imagen"); return; }
-    if (editing === "new") {
-      setPosts([{ id: Date.now(), date: "13 OCT 2026", title: text.split(/[.!?\n]/)[0].slice(0, 60) || "Publicación con imágenes", text, comments: 0, likes: 0, color: "post-one", images }, ...posts]);
-      notify("Publicación creada; se notificó a la comunidad");
-    } else if (editing) {
-      setPosts(posts.map(p => p.id === editing.id ? { ...p, text, images, title: text.split(/[.!?\n]/)[0].slice(0, 60) || p.title } : p));
-      notify("Publicación actualizada");
-    }
-    setEditing(null);
+  const quitar = (imagen: ImagenNueva) => {
+    URL.revokeObjectURL(imagen.vista);
+    setImages(images.filter(i => i.id !== imagen.id));
   };
-  if (editing) return <><PageHead title={editing === "new" ? "Nueva publicación" : "Editar publicación"} subtitle={editing === "new" ? "Comparte una reflexión con toda la comunidad." : "Los cambios se verán de inmediato en la app."} action={<Button variant="secondary" icon="arrow" onClick={() => setEditing(null)}>Volver</Button>}/>
+
+  const save = async () => {
+    if (guardando) return;
+    if (!text.trim() && !images.length) { setError(MENSAJES_PUBLICACION.vacia); return; }
+    setGuardando(true);
+    setError("");
+    const resultado = await crearPublicacion(admin.id, text, images.map(i => i.archivo));
+    setGuardando(false);
+    if (resultado.estado === "error") { setError(resultado.mensaje); return; }
+    setPosts([resultado.publicacion, ...posts]);
+    limpiarFormulario();
+    setCreando(false);
+    notify("Publicación creada");
+  };
+
+  if (creando) return <><PageHead title="Nueva publicación" subtitle="Comparte una reflexión con toda la comunidad." action={<Button variant="secondary" icon="arrow" onClick={cerrar} disabled={guardando}>Volver</Button>}/>
     <Card className="form-card">
       <div className="form-section-title">Contenido de la publicación</div>
-      <label className="field"><span>Texto</span><textarea rows={7} placeholder="Escribe aquí el mensaje para la comunidad…" value={text} onChange={e => { setText(e.target.value); setError(""); }}/>{error && <small>{error}</small>}</label>
+      <label className="field"><span>Texto</span><textarea rows={7} placeholder="Escribe aquí el mensaje para la comunidad…" value={text} disabled={guardando} onChange={e => { setText(e.target.value); setError(""); }}/></label>
       <div className="field"><span>Imágenes</span>
-        <div className="dropzone"><Icon name="upload"/><b>Arrastra tus imágenes aquí</b><p>JPG o PNG · máximo 5 MB por imagen</p><label className="btn btn-secondary file-pick">Seleccionar imágenes<input type="file" accept="image/jpeg,image/png" multiple onChange={e => { pick(e.target.files); e.target.value = ""; }}/></label></div>
+        <div className={`dropzone${arrastrando ? " dropzone-activa" : ""}`} onDragOver={e => { e.preventDefault(); setArrastrando(true); }} onDragLeave={() => setArrastrando(false)} onDrop={e => { e.preventDefault(); setArrastrando(false); if (!guardando) pick(e.dataTransfer.files); }}>
+          <Icon name="upload"/><b>Arrastra tus imágenes aquí</b><p>JPG o PNG · máximo 5 MB por imagen · hasta {MAXIMO_IMAGENES} imágenes</p>
+          <label className="btn btn-secondary file-pick">Seleccionar imágenes<input type="file" accept="image/jpeg,image/png" multiple disabled={guardando} onChange={e => { pick(e.target.files); e.target.value = ""; }}/></label>
+        </div>
         {imageError && <small>{imageError}</small>}
-        {images.length > 0 && <div className="chip-list">{images.map(name => <span className="file-chip" key={name}><Icon name="library" size={15}/><b>{name}</b><button className="icon-btn" aria-label={`Quitar ${name}`} onClick={() => setImages(images.filter(i => i !== name))}><Icon name="close" size={13}/></button></span>)}</div>}
+        {images.length > 0 && <div className="image-previews">{images.map(imagen => <div className="image-preview" key={imagen.id}><img src={imagen.vista} alt={imagen.archivo.name}/><button className="icon-btn" aria-label={`Quitar ${imagen.archivo.name}`} disabled={guardando} onClick={() => quitar(imagen)}><Icon name="close" size={13}/></button></div>)}</div>}
       </div>
-      <div className="form-actions"><Button variant="secondary" onClick={() => setEditing(null)}>Cancelar</Button><Button onClick={save}>{editing === "new" ? "Publicar ahora" : "Guardar cambios"}</Button></div>
+      {error && <div className="form-error" role="alert">{error}</div>}
+      <div className="form-actions"><Button variant="secondary" onClick={cerrar} disabled={guardando}>Cancelar</Button><Button onClick={save} disabled={guardando}>{guardando ? "Publicando…" : "Publicar ahora"}</Button></div>
     </Card></>;
-  const commentNames = ["María Fernanda López", "Carlos Restrepo", "Lucía Gómez", "Andrés Ramírez", "Sofía Martínez", "Jorge Cárdenas", "Ana María Vargas", "Luis Moreno", "Paula Castro", "Juan Pablo Ortiz"];
-  const commentTexts = ["Gracias por este mensaje. Llega justo en el momento indicado.", "Sagrado Corazón de Jesús, en vos confío.", "Ofrezco mi oración por toda esta hermosa comunidad.", "Amén. Que Dios nos bendiga a todos.", "Qué bonita reflexión, la comparto con mi familia.", "Me uno en oración desde Medellín.", "Gracias por recordarnos la importancia de reparar con amor."];
-  const baseComments = detail ? Array.from({ length: initialPosts.find(x => x.id === detail.id)?.comments ?? 0 }, (_, i) => ({ id: `${detail.id}-${i}`, name: commentNames[i % commentNames.length], date: `${12 + Math.floor(i / 8)} oct. · ${8 + (i % 12) > 12 ? (i % 12) - 4 : 8 + (i % 12)}:${String((i * 13) % 60).padStart(2, "0")} ${8 + (i % 12) < 12 ? "a. m." : "p. m."}`, text: commentTexts[i % commentTexts.length] })) : [];
-  const visibleComments = detail ? baseComments.filter(c => !(removedComments[detail.id] || []).includes(c.id)) : [];
-  if (detail) return <><PageHead title="Detalle de publicación" subtitle={`Publicada por Apostolado SC el ${detail.date.toLowerCase()}.`} action={<Button variant="secondary" icon="arrow" onClick={() => setDetail(null)}>Volver</Button>}/>
+
+  if (detail) return <><PageHead title="Detalle de publicación" subtitle={`Publicada el ${fechaPublicacion(detail.creadoEn).toLowerCase()}.`} action={<Button variant="secondary" icon="arrow" onClick={() => setDetail(null)}>Volver</Button>}/>
     <div className="detail-grid">
-      <Card><div className={`post-hero ${detail.color}`}/><div className="post-detail-copy"><div className="eyebrow">{detail.date}</div><div className="card-title">{detail.title}</div><p>{detail.text}</p><div className="post-metrics"><span>{detail.likes} Me gusta</span><span>{detail.comments} comentarios</span></div></div></Card>
-      <Card><div className="card-head"><div className="card-title">Comentarios</div><Badge tone="info">{detail.comments}</Badge></div>{visibleComments.length ? <div className="comment-scroll">{visibleComments.map(c => <Comment key={c.id} name={c.name} date={c.date} text={c.text} onDelete={() => confirm("Eliminar comentario", "Esta acción no se puede deshacer.", () => { setRemovedComments({ ...removedComments, [detail.id]: [...(removedComments[detail.id] || []), c.id] }); const updated = { ...detail, comments: Math.max(0, detail.comments - 1) }; setDetail(updated); setPosts(posts.map(x => x.id === detail.id ? updated : x)); notify("Comentario eliminado"); })}/>)}</div> : <Empty title="Aún no hay comentarios" text="Los comentarios de la comunidad aparecerán aquí."/>}</Card>
+      <Card><Miniatura publicacion={detail} className="post-hero"/><div className="post-detail-copy"><div className="eyebrow">{fechaPublicacion(detail.creadoEn)}</div><div className="card-title">{tituloPublicacion(detail.texto)}</div>{detail.texto && <p>{detail.texto}</p>}{detail.imagenes.length > 1 && <div className="post-gallery">{detail.imagenes.map(ruta => <a key={ruta} href={urlImagen(ruta)} target="_blank" rel="noreferrer"><img src={urlImagen(ruta)} alt=""/></a>)}</div>}<div className="post-metrics"><span>{detail.meGusta} Me gusta</span><span>{detail.comentarios} comentarios</span></div></div></Card>
+      <Card><div className="card-head"><div className="card-title">Comentarios</div><Badge tone="info">{detail.comentarios}</Badge></div><Empty title="Comentarios" text="La moderación de comentarios llega en una próxima versión del portal."/></Card>
     </div></>;
-  const shown = posts.filter(p => (p.title + p.text).toLowerCase().includes(search.toLowerCase()));
+
+  const shown = posts.filter(p => p.texto.toLowerCase().includes(search.toLowerCase()));
   const sorted = order === "Más recientes" ? shown : [...shown].reverse();
-  return <><PageHead title="Publicaciones" subtitle="Mensajes y reflexiones para la comunidad." action={<Button icon="plus" onClick={() => open("new")}>Nueva publicación</Button>}/>
+  return <><PageHead title="Publicaciones" subtitle="Mensajes y reflexiones para la comunidad." action={<Button icon="plus" onClick={abrir}>Nueva publicación</Button>}/>
     <div className="toolbar"><div className="search"><Icon name="search" size={18}/><input placeholder="Buscar publicaciones…" value={search} onChange={e => setSearch(e.target.value)}/></div><Select value={order} onChange={setOrder}><option>Más recientes</option><option>Más antiguas</option></Select></div>
-    <Card className="posts-list">{sorted.length ? sorted.map(p => <div className="post-row" key={p.id}><div className={`post-thumb ${p.color}`}/><div className="post-copy" onClick={() => setDetail(p)}><small>{p.date}</small><b>{p.title}</b><p>{p.text}</p></div><div className="post-counts"><span>{p.comments} comentarios</span><span>{p.likes} Me gusta</span></div><div className="row-actions"><Button variant="ghost" onClick={() => open(p)}>Editar</Button><Button variant="ghost" onClick={() => confirm("Eliminar publicación", "También se eliminarán sus comentarios y reacciones.", () => { setPosts(posts.filter(x => x.id !== p.id)); notify("Publicación eliminada"); })}>Eliminar</Button></div></div>) : <Empty title="No encontramos publicaciones" text="Prueba con otras palabras."/>}</Card></>;
+    <Card className="posts-list">{cargando ? <Empty title="Cargando publicaciones…" text="Un momento, por favor."/> : errorCarga ? <Empty title="No pudimos cargar las publicaciones" text={errorCarga}/> : sorted.length ? sorted.map(p => <div className="post-row" key={p.id}><Miniatura publicacion={p} className="post-thumb"/><div className="post-copy" onClick={() => setDetail(p)}><small>{fechaPublicacion(p.creadoEn)}</small><b>{tituloPublicacion(p.texto)}</b><p>{p.texto || `${p.imagenes.length} ${p.imagenes.length === 1 ? "imagen" : "imágenes"}`}</p></div><div className="post-counts"><span>{p.comentarios} comentarios</span><span>{p.meGusta} Me gusta</span></div><div className="row-actions"><Button variant="ghost" onClick={() => setDetail(p)}>Ver detalle</Button></div></div>) : posts.length ? <Empty title="No encontramos publicaciones" text="Prueba con otras palabras."/> : <Empty title="Aún no hay publicaciones" text="Crea la primera con «Nueva publicación»."/>}</Card></>;
 }
 
 function Comment({ name, date, text, onDelete }: { name: string; date: string; text: string; onDelete: () => void }) {
@@ -719,7 +759,7 @@ function PortalApp() {
   const confirm=(title:string,text:string,ok?:()=>void)=>setModal({title,text,ok});
   const content=useMemo(()=>{
     if(section==="Resumen") return <Summary/>;
-    if(section==="Publicaciones") return <Publications notify={notify} confirm={confirm}/>;
+    if(section==="Publicaciones") return admin ? <Publications admin={admin} notify={notify}/> : null;
     if(section==="Oración en vivo") return <LivePrayer notify={notify}/>;
     if(section==="Biblioteca") return <Library confirm={confirm} notify={notify} active={libraryType} onOpen={tab=>navigate(`/biblioteca/${libraryMeta[tab].slug}`)} onBack={()=>navigate("/biblioteca")}/>;
     if(section==="Calendario") return <Calendar notify={notify}/>;
@@ -727,7 +767,7 @@ function PortalApp() {
     if(section==="Donaciones") return <Donations/>;
     if(section==="Tienda") return <Books confirm={confirm} notify={notify}/>;
     return <Orders notify={notify}/>;
-  },[section, location.pathname]);
+  },[section, location.pathname, admin]);
   if(verificando) return <div className="login-shell" style={{display:"grid",placeItems:"center",color:"var(--warm)"}}>Cargando…</div>;
   if(!admin) return <Login onLogin={setAdmin}/>;
   return <div className="app-shell">
