@@ -5,6 +5,7 @@ import { AppText } from '../components/app-text';
 import { BackHeader } from '../components/back-header';
 import { MenuRow, MenuSeparator } from '../components/menu-row';
 import { cerrarSesion, confirmarCierreDeSesion } from '../lib/cerrar-sesion';
+import { confirmarEliminacionDeCuenta, eliminarCuenta } from '../lib/eliminar-cuenta';
 import { colors, fonts, spacing } from '../theme';
 
 function proximamente(opcion: string) {
@@ -13,6 +14,8 @@ function proximamente(opcion: string) {
 
 export default function ConfiguracionScreen() {
   const [cerrando, setCerrando] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+  const ocupado = cerrando || eliminando;
 
   const salir = () => {
     confirmarCierreDeSesion(async () => {
@@ -25,6 +28,17 @@ export default function ConfiguracionScreen() {
           'No pudimos cerrar sesión',
           'Revisa tu conexión a internet e inténtalo de nuevo.',
         );
+      }
+    });
+  };
+
+  const eliminar = () => {
+    confirmarEliminacionDeCuenta(async () => {
+      setEliminando(true);
+      const resultado = await eliminarCuenta();
+      if (!resultado.ok) {
+        setEliminando(false);
+        Alert.alert(resultado.titulo, resultado.mensaje);
       }
     });
   };
@@ -85,7 +99,7 @@ export default function ConfiguracionScreen() {
               title={cerrando ? 'Cerrando sesión…' : 'Cerrar sesión'}
               tone="danger"
               showChevron={false}
-              disabled={cerrando}
+              disabled={ocupado}
               onPress={salir}
             />
           </View>
@@ -96,10 +110,11 @@ export default function ConfiguracionScreen() {
           <View style={styles.card}>
             <MenuRow
               icon="trash-outline"
-              title="Eliminar cuenta"
+              title={eliminando ? 'Eliminando cuenta…' : 'Eliminar cuenta'}
               description="Borra tu cuenta y todos tus datos"
               tone="danger"
-              onPress={() => proximamente('Eliminar cuenta')}
+              disabled={ocupado}
+              onPress={eliminar}
             />
           </View>
         </View>
