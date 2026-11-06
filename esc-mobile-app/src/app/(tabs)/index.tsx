@@ -50,7 +50,10 @@ export default function InicioScreen() {
             hora={oracionEnVivo.oracion.hora}
             estado={oracionEnVivo.estado ?? 'proxima'}
             oficioDeManana={oracionEnVivo.oracion.oficioDeManana}
+            confirmada={oracionEnVivo.confirmada}
+            guardandoAsistencia={oracionEnVivo.guardandoAsistencia}
             onUnirse={oracionEnVivo.unirse}
+            onAlternarAsistencia={oracionEnVivo.alternarAsistencia}
           />
         ) : undefined
       }
