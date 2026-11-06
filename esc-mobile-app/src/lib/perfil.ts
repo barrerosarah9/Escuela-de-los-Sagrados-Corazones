@@ -26,7 +26,14 @@ const COLUMNAS = 'id, nombre, correo, telefono, foto_path, creado_en';
 const DIA_MS = 86_400_000;
 const DESFASE_BOGOTA_MS = 5 * 3_600_000;
 const DURACION_URL_FOTO_S = 3600;
+const MARGEN_RENOVACION_URL_MS = 5 * 60_000;
+const MAXIMO_URLS_EN_CACHE = 200;
 const MAXIMO_DIAS_RACHA = 366;
+
+type UrlEnCache = { url: string; venceEn: number };
+
+const urlsFirmadas = new Map<string, UrlEnCache>();
+const urlsEnCamino = new Map<string, Promise<string | null>>();
 
 function esErrorDeRed(mensaje: string) {
   return /network|fetch|timeout/i.test(mensaje);
@@ -62,12 +69,39 @@ export async function actualizarPerfil(
   return { ok: true, perfil: data };
 }
 
-export async function obtenerUrlFoto(fotoPath: string | null) {
-  if (!fotoPath) return null;
+function guardarUrlEnCache(fotoPath: string, url: string) {
+  if (urlsFirmadas.size >= MAXIMO_URLS_EN_CACHE) {
+    const masAntigua = urlsFirmadas.keys().next().value;
+    if (masAntigua !== undefined) urlsFirmadas.delete(masAntigua);
+  }
+  urlsFirmadas.set(fotoPath, {
+    url,
+    venceEn: Date.now() + DURACION_URL_FOTO_S * 1000 - MARGEN_RENOVACION_URL_MS,
+  });
+}
+
+async function firmarUrlFoto(fotoPath: string) {
   const { data } = await supabase.storage
     .from(BUCKET_AVATARES)
     .createSignedUrl(fotoPath, DURACION_URL_FOTO_S);
-  return data?.signedUrl ?? null;
+  const url = data?.signedUrl ?? null;
+  if (url) guardarUrlEnCache(fotoPath, url);
+  return url;
+}
+
+export async function obtenerUrlFoto(fotoPath: string | null) {
+  if (!fotoPath) return null;
+
+  const enCache = urlsFirmadas.get(fotoPath);
+  if (enCache && enCache.venceEn > Date.now()) return enCache.url;
+  if (enCache) urlsFirmadas.delete(fotoPath);
+
+  const enCamino = urlsEnCamino.get(fotoPath);
+  if (enCamino) return enCamino;
+
+  const peticion = firmarUrlFoto(fotoPath).finally(() => urlsEnCamino.delete(fotoPath));
+  urlsEnCamino.set(fotoPath, peticion);
+  return peticion;
 }
 
 export function fechaHoyBogota() {
