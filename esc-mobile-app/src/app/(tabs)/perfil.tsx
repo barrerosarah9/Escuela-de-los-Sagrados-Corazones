@@ -1,19 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState, type ComponentProps } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText } from '../../components/app-text';
 import { Avatar } from '../../components/avatar';
-import { Button } from '../../components/button';
-import { FormAlert } from '../../components/form-alert';
+import { EstadoError } from '../../components/estado-error';
 import { MenuRow, MenuSeparator } from '../../components/menu-row';
+import { PerfilSkeleton } from '../../components/perfil-skeleton';
 import { cerrarSesion, confirmarCierreDeSesion } from '../../lib/cerrar-sesion';
 import { obtenerPerfil, obtenerRacha, type Perfil } from '../../lib/perfil';
 import { useSession } from '../../lib/session';
@@ -74,13 +67,14 @@ export default function PerfilScreen() {
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [errorCarga, setErrorCarga] = useState(false);
+  const [reintentando, setReintentando] = useState(false);
   const [cerrando, setCerrando] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!usuarioId) return;
-    setErrorCarga(false);
     try {
       setPerfil(await obtenerPerfil(usuarioId));
+      setErrorCarga(false);
     } catch {
       setErrorCarga(true);
     }
@@ -104,6 +98,12 @@ export default function PerfilScreen() {
     setRefrescando(false);
   };
 
+  const reintentar = async () => {
+    setReintentando(true);
+    await cargar();
+    setReintentando(false);
+  };
+
   const salir = () => {
     confirmarCierreDeSesion(async () => {
       setCerrando(true);
@@ -121,9 +121,13 @@ export default function PerfilScreen() {
 
   if (cargando && !perfil) {
     return (
-      <View style={[styles.screen, styles.centro]}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        scrollEnabled={false}
+      >
+        <PerfilSkeleton />
+      </ScrollView>
     );
   }
 
@@ -145,10 +149,13 @@ export default function PerfilScreen() {
       </View>
 
       {errorCarga && !perfil ? (
-        <View style={styles.section}>
-          <FormAlert message="No pudimos cargar tu perfil. Revisa tu conexión a internet." />
-          <Button title="Reintentar" variant="secondary" onPress={() => void cargar()} />
-        </View>
+        <EstadoError
+          titulo="No pudimos cargar tu perfil"
+          mensaje="Revisa tu conexión a internet e inténtalo de nuevo."
+          onReintentar={() => void reintentar()}
+          reintentando={reintentando}
+          style={styles.error}
+        />
       ) : null}
 
       {perfil ? (
@@ -246,10 +253,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  centro: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   content: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
@@ -295,6 +298,10 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: 10,
+  },
+  error: {
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   card: {
     borderRadius: 20,
