@@ -16,6 +16,8 @@ export const MENSAJES_PUBLICACION = {
   sinConexion: 'No hay conexión a internet. Revisa tu red e inténtalo de nuevo.',
   desconocido: 'No pudimos guardar la publicación. Inténtalo de nuevo en unos minutos.',
   carga: 'No pudimos cargar las publicaciones. Recarga la página para intentarlo de nuevo.',
+  noExiste: 'Esta publicación ya no existe. Recarga la página para ver la lista actualizada.',
+  noEliminada: 'No pudimos eliminar la publicación. Inténtalo de nuevo en unos minutos.',
 };
 
 export type Publicacion = {
@@ -31,6 +33,8 @@ export type ResultadoPublicacion =
   | { estado: 'ok'; publicacion: Publicacion }
   | { estado: 'error'; mensaje: string };
 
+export type ResultadoEliminacion = { estado: 'ok' } | { estado: 'error'; mensaje: string };
+
 type FilaPublicacion = {
   id: number;
   texto: string;
@@ -39,6 +43,8 @@ type FilaPublicacion = {
   total_comentarios?: number | string | null;
   total_me_gusta?: number | string | null;
 };
+
+type ResultadoSubida = { estado: 'ok'; rutas: string[] } | { estado: 'error'; mensaje: string };
 
 function aPublicacion(fila: FilaPublicacion): Publicacion {
   return {
@@ -100,6 +106,53 @@ async function borrarImagenes(rutas: string[]) {
   }
 }
 
+function validarContenido(texto: string, totalImagenes: number, archivos: File[]): string | null {
+  if (!texto && !totalImagenes) {
+    return MENSAJES_PUBLICACION.vacia;
+  }
+  if (totalImagenes > MAXIMO_IMAGENES) {
+    return MENSAJES_PUBLICACION.demasiadas;
+  }
+  for (const archivo of archivos) {
+    const problema = validarImagen(archivo);
+    if (problema) {
+      return problema;
+    }
+  }
+  return null;
+}
+
+async function subirImagenes(archivos: File[]): Promise<ResultadoSubida> {
+  const subidas: string[] = [];
+  for (const archivo of archivos) {
+    const ruta = rutaNueva(archivo);
+    const { error } = await supabase.storage.from(BUCKET).upload(ruta, archivo, {
+      contentType: archivo.type,
+      cacheControl: '31536000',
+      upsert: false,
+    });
+    if (error) {
+      await borrarImagenes(subidas);
+      return { estado: 'error', mensaje: mensajeDeErrorStorage(error, archivo.name) };
+    }
+    subidas.push(ruta);
+  }
+  return { estado: 'ok', rutas: subidas };
+}
+
+function mensajeDeErrorTabla(codigo?: string) {
+  if (codigo === '42501') {
+    return MENSAJES_PUBLICACION.sinPermisos;
+  }
+  if (codigo === '23514') {
+    return MENSAJES_PUBLICACION.vacia;
+  }
+  if (codigo === 'PGRST116') {
+    return MENSAJES_PUBLICACION.noExiste;
+  }
+  return MENSAJES_PUBLICACION.desconocido;
+}
+
 export async function listarPublicaciones(): Promise<Publicacion[]> {
   const { data, error } = await supabase
     .from('publicaciones_con_conteos')
@@ -117,35 +170,18 @@ export async function crearPublicacion(
   archivos: File[],
 ): Promise<ResultadoPublicacion> {
   const textoLimpio = texto.trim();
-
-  if (!textoLimpio && !archivos.length) {
-    return { estado: 'error', mensaje: MENSAJES_PUBLICACION.vacia };
-  }
-  if (archivos.length > MAXIMO_IMAGENES) {
-    return { estado: 'error', mensaje: MENSAJES_PUBLICACION.demasiadas };
-  }
-  for (const archivo of archivos) {
-    const problema = validarImagen(archivo);
-    if (problema) {
-      return { estado: 'error', mensaje: problema };
-    }
+  const problema = validarContenido(textoLimpio, archivos.length, archivos);
+  if (problema) {
+    return { estado: 'error', mensaje: problema };
   }
 
-  const subidas: string[] = [];
+  let subidas: string[] = [];
   try {
-    for (const archivo of archivos) {
-      const ruta = rutaNueva(archivo);
-      const { error } = await supabase.storage.from(BUCKET).upload(ruta, archivo, {
-        contentType: archivo.type,
-        cacheControl: '31536000',
-        upsert: false,
-      });
-      if (error) {
-        await borrarImagenes(subidas);
-        return { estado: 'error', mensaje: mensajeDeErrorStorage(error, archivo.name) };
-      }
-      subidas.push(ruta);
+    const subida = await subirImagenes(archivos);
+    if (subida.estado === 'error') {
+      return subida;
     }
+    subidas = subida.rutas;
 
     const { data, error } = await supabase
       .from('publicaciones')
@@ -155,18 +191,88 @@ export async function crearPublicacion(
 
     if (error || !data) {
       await borrarImagenes(subidas);
-      if (error?.code === '42501') {
-        return { estado: 'error', mensaje: MENSAJES_PUBLICACION.sinPermisos };
-      }
-      if (error?.code === '23514') {
-        return { estado: 'error', mensaje: MENSAJES_PUBLICACION.vacia };
-      }
-      return { estado: 'error', mensaje: MENSAJES_PUBLICACION.desconocido };
+      return { estado: 'error', mensaje: mensajeDeErrorTabla(error?.code) };
     }
 
     return { estado: 'ok', publicacion: aPublicacion(data) };
   } catch {
     await borrarImagenes(subidas).catch(() => undefined);
+    return { estado: 'error', mensaje: MENSAJES_PUBLICACION.sinConexion };
+  }
+}
+
+export async function editarPublicacion(
+  actual: Publicacion,
+  texto: string,
+  conservadas: string[],
+  archivos: File[],
+): Promise<ResultadoPublicacion> {
+  const textoLimpio = texto.trim();
+  const conservadasValidas = conservadas.filter(ruta => actual.imagenes.includes(ruta));
+  const problema = validarContenido(
+    textoLimpio,
+    conservadasValidas.length + archivos.length,
+    archivos,
+  );
+  if (problema) {
+    return { estado: 'error', mensaje: problema };
+  }
+
+  let subidas: string[] = [];
+  try {
+    const subida = await subirImagenes(archivos);
+    if (subida.estado === 'error') {
+      return subida;
+    }
+    subidas = subida.rutas;
+
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .update({ texto: textoLimpio, imagenes: [...conservadasValidas, ...subidas] })
+      .eq('id', actual.id)
+      .select('id, texto, imagenes, creado_en')
+      .single();
+
+    if (error || !data) {
+      await borrarImagenes(subidas);
+      return { estado: 'error', mensaje: mensajeDeErrorTabla(error?.code) };
+    }
+
+    const retiradas = actual.imagenes.filter(ruta => !conservadasValidas.includes(ruta));
+    await borrarImagenes(retiradas).catch(() => undefined);
+
+    return {
+      estado: 'ok',
+      publicacion: { ...aPublicacion(data), comentarios: actual.comentarios, meGusta: actual.meGusta },
+    };
+  } catch {
+    await borrarImagenes(subidas).catch(() => undefined);
+    return { estado: 'error', mensaje: MENSAJES_PUBLICACION.sinConexion };
+  }
+}
+
+export async function eliminarPublicacion(publicacion: Publicacion): Promise<ResultadoEliminacion> {
+  try {
+    const { data, error } = await supabase
+      .from('publicaciones')
+      .delete()
+      .eq('id', publicacion.id)
+      .select('id');
+
+    if (error) {
+      return {
+        estado: 'error',
+        mensaje:
+          error.code === '42501' ? MENSAJES_PUBLICACION.sinPermisos : MENSAJES_PUBLICACION.noEliminada,
+      };
+    }
+    if (!data?.length) {
+      return { estado: 'error', mensaje: MENSAJES_PUBLICACION.noExiste };
+    }
+
+    await borrarImagenes(publicacion.imagenes).catch(() => undefined);
+    return { estado: 'ok' };
+  } catch {
     return { estado: 'error', mensaje: MENSAJES_PUBLICACION.sinConexion };
   }
 }
