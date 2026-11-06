@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { createHashRouter, RouterProvider, useLocation, useNavigate } from "react-router";
 import logo from "./logo.webp";
 import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador, restaurarSesion, type Administrador } from "./lib/auth";
+import { eliminarComentario, listarComentarios, type Comentario } from "./lib/comentarios";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -288,6 +289,12 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
     notify("Publicación eliminada");
   };
 
+  const restarComentario = (publicacionId: number) => {
+    const restar = (p: Publicacion) => p.id === publicacionId ? { ...p, comentarios: Math.max(0, p.comentarios - 1) } : p;
+    setPosts(actuales => actuales.map(restar));
+    setDetail(actual => actual ? restar(actual) : actual);
+  };
+
   const conteo = (n: number, singular: string, plural: string) => `${n} ${n === 1 ? singular : plural}`;
   const modalEliminar = eliminando && <Modal title="Eliminar publicación" danger action="Eliminar" onClose={() => setEliminando(null)} onConfirm={() => { void eliminar(eliminando); }}><p className="modal-text">«{tituloPublicacion(eliminando.texto)}» desaparecerá del feed junto con sus {conteo(eliminando.comentarios, "comentario", "comentarios")} y {conteo(eliminando.meGusta, "«Me gusta»", "«Me gusta»")}. Esta acción no se puede deshacer.</p></Modal>;
   const avisoAccion = errorAccion && <div className="form-error" role="alert">{errorAccion}</div>;
@@ -313,7 +320,7 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
     {avisoAccion}
     <div className="detail-grid">
       <Card><Miniatura publicacion={detail} className="post-hero"/><div className="post-detail-copy"><div className="eyebrow">{fechaPublicacion(detail.creadoEn)}</div><div className="card-title">{tituloPublicacion(detail.texto)}</div>{detail.texto && <p>{detail.texto}</p>}{detail.imagenes.length > 1 && <div className="post-gallery">{detail.imagenes.map(ruta => <a key={ruta} href={urlImagen(ruta)} target="_blank" rel="noreferrer"><img src={urlImagen(ruta)} alt=""/></a>)}</div>}<div className="post-metrics"><span>{detail.meGusta} Me gusta</span><span>{detail.comentarios} comentarios</span></div></div></Card>
-      <Card><div className="card-head"><div className="card-title">Comentarios</div><Badge tone="info">{detail.comentarios}</Badge></div><Empty title="Comentarios" text="La moderación de comentarios llega en una próxima versión del portal."/></Card>
+      <ComentariosPublicacion publicacion={detail} notify={notify} onEliminado={restarComentario}/>
     </div>
     {modalEliminar}</>;
 
@@ -326,8 +333,63 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
     {modalEliminar}</>;
 }
 
-function Comment({ name, date, text, onDelete }: { name: string; date: string; text: string; onDelete: () => void }) {
-  return <div className="comment"><div className="avatar">{name.split(" ").map(n => n[0]).slice(0,2)}</div><div><b>{name}</b><small>{date}</small><p>{text}</p></div><Button variant="ghost" onClick={onDelete}>Eliminar</Button></div>;
+const fechaComentario = (iso: string) => {
+  const d = new Date(iso);
+  const hora = d.toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" });
+  return `${d.getDate()} de ${monthNames[d.getMonth()]} de ${d.getFullYear()} · ${hora}`;
+};
+const resumenComentario = (texto: string) => texto.length > 80 ? `${texto.slice(0, 80).trim()}…` : texto;
+
+function FilaComentario({ comentario, ocupado, borrando, onEliminar }: { comentario: Comentario; ocupado: boolean; borrando: boolean; onEliminar: () => void }) {
+  const { autor } = comentario;
+  return <div className="comment">
+    <span className="avatar comentario-avatar">{iniciales(autor.nombre)}{autor.fotoUrl && <img src={autor.fotoUrl} alt="" onError={e => { e.currentTarget.style.display = "none"; }}/>}</span>
+    <div><b>{autor.nombre}</b><small>{autor.correo ? `${autor.correo} · ` : ""}{fechaComentario(comentario.creadoEn)}</small><p>{comentario.texto}</p></div>
+    <AccionIcono icon="trash" label={borrando ? "Eliminando…" : "Eliminar comentario"} tone="danger" disabled={ocupado} onClick={onEliminar}/>
+  </div>;
+}
+
+function ComentariosPublicacion({ publicacion, notify, onEliminado }: { publicacion: Publicacion; notify: (s: string) => void; onEliminado: (publicacionId: number) => void }) {
+  const [comentarios, setComentarios] = useState<Comentario[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [intento, setIntento] = useState(0);
+  const [eliminando, setEliminando] = useState<Comentario | null>(null);
+  const [borrandoId, setBorrandoId] = useState<number | null>(null);
+  const [errorAccion, setErrorAccion] = useState("");
+
+  useEffect(() => {
+    let activo = true;
+    setCargando(true);
+    setErrorCarga("");
+    listarComentarios(publicacion.id)
+      .then(lista => { if (activo) setComentarios(lista); })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
+      .finally(() => { if (activo) setCargando(false); });
+    return () => { activo = false; };
+  }, [publicacion.id, intento]);
+
+  const eliminar = async (comentario: Comentario) => {
+    setBorrandoId(comentario.id);
+    setErrorAccion("");
+    const resultado = await eliminarComentario(comentario.id);
+    setBorrandoId(null);
+    if (resultado.estado === "error") { setErrorAccion(resultado.mensaje); return; }
+    setComentarios(actuales => actuales.filter(c => c.id !== comentario.id));
+    onEliminado(publicacion.id);
+    if (resultado.estado === "no_existe") { setErrorAccion(resultado.mensaje); return; }
+    notify("Comentario eliminado");
+  };
+
+  const modal = eliminando && <Modal title="Eliminar comentario" danger action="Eliminar" onClose={() => setEliminando(null)} onConfirm={() => { void eliminar(eliminando); }}><p className="modal-text">Se eliminará el comentario de {eliminando.autor.nombre}: «{resumenComentario(eliminando.texto)}». Dejará de verse en la app. Esta acción no se puede deshacer.</p></Modal>;
+
+  return <Card><div className="card-head"><div className="card-title">Comentarios</div><Badge tone="info">{cargando || errorCarga ? publicacion.comentarios : comentarios.length}</Badge></div>
+    {errorAccion && <div className="form-error" role="alert">{errorAccion}</div>}
+    {cargando ? <Empty title="Cargando comentarios…" text="Un momento, por favor."/>
+      : errorCarga ? <><Empty title="No pudimos cargar los comentarios" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={() => setIntento(n => n + 1)}>Reintentar</Button></div></>
+      : comentarios.length ? <div className="comment-scroll">{comentarios.map(c => <FilaComentario key={c.id} comentario={c} ocupado={borrandoId !== null} borrando={borrandoId === c.id} onEliminar={() => setEliminando(c)}/>)}</div>
+      : <Empty title="Sin comentarios" text="Cuando alguien comente esta publicación desde la app, aparecerá aquí."/>}
+    {modal}</Card>;
 }
 
 
