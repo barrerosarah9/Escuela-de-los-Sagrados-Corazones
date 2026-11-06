@@ -6,6 +6,7 @@ import {
   type MotivoErrorFeed,
   type Publicacion,
 } from './feed';
+import { escucharComentarios } from './eventos-feed';
 
 type EstadoFeed = 'cargando' | 'listo' | 'error';
 
@@ -55,6 +56,20 @@ export function useFeed() {
     const miGeneracion = ++generacion.current;
     void resolverPrimeraPagina(miGeneracion, 'inicial');
   }, [resolverPrimeraPagina]);
+
+  useEffect(
+    () =>
+      escucharComentarios((publicacionId) => {
+        setPublicaciones((actuales) =>
+          actuales.map((publicacion) =>
+            publicacion.id === publicacionId
+              ? { ...publicacion, totalComentarios: publicacion.totalComentarios + 1 }
+              : publicacion,
+          ),
+        );
+      }),
+    [],
+  );
 
   const reiniciar = useCallback(
     (modo: 'inicial' | 'refresco') => {
