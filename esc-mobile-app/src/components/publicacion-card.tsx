@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { memo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { fechaCompleta, fechaRelativa } from '../lib/fecha-relativa';
 import type { Publicacion } from '../lib/feed';
 import { colors, fonts } from '../theme';
@@ -12,18 +12,19 @@ const NOMBRE_AUTOR = 'Escuela de los Sagrados Corazones';
 
 type Props = {
   publicacion: Publicacion;
+  onAbrir?: (publicacionId: number) => void;
 };
 
 function textoContador(total: number, singular: string, plural: string) {
   return `${total} ${total === 1 ? singular : plural}`;
 }
 
-function PublicacionCardBase({ publicacion }: Props) {
+function PublicacionCardBase({ publicacion, onAbrir }: Props) {
   const { id, texto, imagenes, creadoEn, totalComentarios, totalMeGusta } = publicacion;
   const tieneTexto = texto.trim().length > 0;
 
-  return (
-    <View style={styles.publicacion}>
+  const contenido = (
+    <>
       <View style={styles.avatar} accessible={false}>
         <MaterialCommunityIcons name="church" size={22} color={colors.white} />
       </View>
@@ -62,7 +63,20 @@ function PublicacionCardBase({ publicacion }: Props) {
           </View>
         </View>
       </View>
-    </View>
+    </>
+  );
+
+  if (!onAbrir) return <View style={styles.publicacion}>{contenido}</View>;
+
+  return (
+    <Pressable
+      onPress={() => onAbrir(id)}
+      accessibilityRole="button"
+      accessibilityHint="Abre la publicación para ver y escribir comentarios"
+      style={({ pressed }) => [styles.publicacion, pressed && styles.presionada]}
+    >
+      {contenido}
+    </Pressable>
   );
 }
 
@@ -78,6 +92,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.white,
+  },
+  presionada: {
+    backgroundColor: colors.surface,
   },
   avatar: {
     width: 43,
