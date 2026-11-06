@@ -57,23 +57,23 @@ la tarjeta: `<FeedEncabezado oracionEnVivo={…} />`.
 
 ## Estados
 
+Los componentes de carga, error y vacío son de T-022; ver
+[Estados de carga, error y vacío (T-022).md](Estados%20de%20carga%2C%20error%20y%20vac%C3%ADo%20%28T-022%29.md).
+
 | Estado | Qué se ve |
 | --- | --- |
-| Primera carga | Indicador centrado |
-| Error en la primera carga | Mensaje (sin conexión u otro) y botón «Reintentar» |
-| Sin publicaciones | «Aún no hay publicaciones» |
+| Primera carga | Encabezado «Comunidad» y tres publicaciones skeleton |
+| Error en la primera carga | `EstadoError` (sin conexión u otro) con «Reintentar»; también se reintenta deslizando hacia abajo |
+| Sin publicaciones | `EstadoVacio`: «Aún no hay publicaciones» |
 | Cargando la página siguiente | Indicador al final de la lista |
 | Error en la página siguiente | «No pudimos cargar más publicaciones» con «Reintentar», sin perder lo cargado |
 | Fin | «Ya viste todas las publicaciones» |
-| Recarga deslizando hacia abajo | Si falla, se conserva lo que ya estaba |
-
-Los estados vacío y de error son mínimos: los completa T-022 (F2-11).
+| Recarga deslizando hacia abajo | Si falla, se conserva lo que ya estaba; si no había publicaciones, se muestra el error |
 
 ## Pendiente en otras tareas
 
 - Dar y quitar «Me gusta» (CU-07 A3) y abrir comentarios: T-023 y T-024. Hoy los contadores solo
   muestran el número.
-- Componentes de carga, error y vacío con diseño: T-022.
 
 ## Pruebas (6 nov 2026)
 
