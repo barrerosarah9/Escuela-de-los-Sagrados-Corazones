@@ -6,14 +6,29 @@ import { EstadoError } from '../../components/estado-error';
 import { EstadoVacio } from '../../components/estado-vacio';
 import { FeedEncabezado } from '../../components/feed-encabezado';
 import { FeedPie } from '../../components/feed-pie';
+import { OracionEnVivoCard } from '../../components/oracion-en-vivo-card';
 import { PublicacionCard } from '../../components/publicacion-card';
 import { ListaPublicacionesSkeleton } from '../../components/publicacion-skeleton';
 import type { Publicacion } from '../../lib/feed';
 import { useFeed } from '../../lib/use-feed';
+import { useOracionEnVivo } from '../../lib/use-oracion-en-vivo';
 import { colors } from '../../theme';
 
 export default function InicioScreen() {
   const feed = useFeed();
+  const oracionEnVivo = useOracionEnVivo();
+  const { refrescar: refrescarFeed, reintentar: reintentarFeed } = feed;
+  const { recargar: recargarOracion } = oracionEnVivo;
+
+  const refrescar = useCallback(() => {
+    refrescarFeed();
+    void recargarOracion();
+  }, [refrescarFeed, recargarOracion]);
+
+  const reintentar = useCallback(() => {
+    reintentarFeed();
+    void recargarOracion();
+  }, [reintentarFeed, recargarOracion]);
 
   const abrirPublicacion = useCallback((publicacionId: number) => {
     router.push({ pathname: '/publicacion/[id]', params: { id: String(publicacionId) } });
@@ -26,10 +41,26 @@ export default function InicioScreen() {
     [abrirPublicacion],
   );
 
+  const encabezado = (
+    <FeedEncabezado
+      oracionEnVivo={
+        oracionEnVivo.oracion ? (
+          <OracionEnVivoCard
+            titulo={oracionEnVivo.oracion.titulo}
+            hora={oracionEnVivo.oracion.hora}
+            estado={oracionEnVivo.estado ?? 'proxima'}
+            oficioDeManana={oracionEnVivo.oracion.oficioDeManana}
+            onUnirse={oracionEnVivo.unirse}
+          />
+        ) : undefined
+      }
+    />
+  );
+
   if (feed.estado === 'cargando') {
     return (
       <ScrollView style={styles.lista} scrollEnabled={false}>
-        <FeedEncabezado />
+        {encabezado}
         <ListaPublicacionesSkeleton etiqueta="Cargando publicaciones" />
       </ScrollView>
     );
@@ -42,17 +73,17 @@ export default function InicioScreen() {
         refreshControl={
           <RefreshControl
             refreshing={false}
-            onRefresh={feed.reintentar}
+            onRefresh={reintentar}
             tintColor={colors.primary}
             colors={[colors.primary]}
           />
         }
       >
-        <FeedEncabezado />
+        {encabezado}
         <EstadoError
           motivo={feed.motivoError ?? 'desconocido'}
           titulo="No se pudo cargar el feed"
-          onReintentar={feed.reintentar}
+          onReintentar={reintentar}
         />
       </ScrollView>
     );
@@ -64,7 +95,7 @@ export default function InicioScreen() {
       data={feed.publicaciones}
       keyExtractor={(publicacion) => String(publicacion.id)}
       renderItem={renderItem}
-      ListHeaderComponent={<FeedEncabezado />}
+      ListHeaderComponent={encabezado}
       ListEmptyComponent={
         <EstadoVacio
           icono="newspaper-outline"
@@ -86,7 +117,7 @@ export default function InicioScreen() {
       refreshControl={
         <RefreshControl
           refreshing={feed.refrescando}
-          onRefresh={feed.refrescar}
+          onRefresh={refrescar}
           tintColor={colors.primary}
           colors={[colors.primary]}
         />
