@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking } from 'react-native';
+import { Alert, AppState } from 'react-native';
+import { abrirMeet } from './abrir-meet';
 import {
   cancelarAsistencia,
   confirmarAsistencia,
@@ -91,17 +92,23 @@ export function useOracionEnVivo() {
   }, [recargar]);
 
   const oracionDeHoy = oracion && oracion.fecha === fechaDeHoyEnBogota(ahora) ? oracion : null;
-  const enlace = oracionDeHoy?.enlaceMeet;
   const oracionId = oracionDeHoy?.id ?? null;
   const confirmada =
     oracionId !== null && asistencia?.oracionId === oracionId ? asistencia.confirmada : false;
 
   const unirse = useCallback(() => {
-    if (!enlace) return;
-    Linking.openURL(enlace).catch(() => {
-      Alert.alert('No se pudo abrir la reunión', 'Intenta de nuevo en unos segundos.');
+    if (!oracionDeHoy) return;
+    const momento = new Date();
+    if (estadoDeOracion(oracionDeHoy, momento) !== 'en_curso') {
+      setAhora(momento);
+      return;
+    }
+    void abrirMeet(oracionDeHoy.enlaceMeet).then((abierta) => {
+      if (!abierta) {
+        Alert.alert('No se pudo abrir la reunión', 'Intenta de nuevo en unos segundos.');
+      }
     });
-  }, [enlace]);
+  }, [oracionDeHoy]);
 
   const cambiarAsistencia = useCallback(
     async (confirmar: boolean) => {

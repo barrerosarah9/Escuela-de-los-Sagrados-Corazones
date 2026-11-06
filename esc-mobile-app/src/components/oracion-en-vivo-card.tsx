@@ -178,7 +178,7 @@ export function OracionEnVivoCard({
 
       {estado === 'proxima' ? (
         <AppText variant="caption" color={TINTA_SUAVE} style={styles.aviso}>
-          El enlace estará disponible a partir de las {horaTexto}
+          El enlace estará disponible próximamente, a partir de las {horaTexto}
         </AppText>
       ) : null}
     </View>
