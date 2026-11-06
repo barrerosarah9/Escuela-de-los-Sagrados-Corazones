@@ -52,11 +52,10 @@ migración; queda fuera de esta tarea.
 - El comentario enviado se agrega a la lista con el nombre y la foto del perfil propio, sube el
   contador del detalle y el del feed, y la lista baja hasta él.
 
-## Pendiente en T-024
+## Lista de comentarios
 
-La lista solo muestra los comentarios enviados en la visita actual. Cargar los comentarios que ya
-existen, con el nombre y la foto de cada autor (respetando `perfil_visible`), es T-024. Mientras
-tanto, el contador sí muestra el total real.
+Cargar los comentarios que ya existen, con el nombre y la foto de cada autor, se hizo en T-024; ver
+[Comentarios (T-024).md](Comentarios%20%28T-024%29.md).
 
 ## Pruebas (6 nov 2026)
 
