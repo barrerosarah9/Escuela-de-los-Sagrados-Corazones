@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { formatearHora } from '../lib/oracion-en-vivo';
+import { formatearHora, type EstadoOracionEnVivo } from '../lib/oracion-en-vivo';
 import { colors, fonts, radius } from '../theme';
 import { AppText } from './app-text';
 import { PuntoEnVivo } from './punto-en-vivo';
@@ -12,12 +12,21 @@ const TINTA_DESHABILITADA = 'rgba(10, 26, 46, 0.42)';
 type Props = {
   titulo: string;
   hora: string;
-  enCurso: boolean;
+  estado: EstadoOracionEnVivo;
+  oficioDeManana: string | null;
   onUnirse: () => void;
 };
 
-export function OracionEnVivoCard({ titulo, hora, enCurso, onUnirse }: Props) {
+export function OracionEnVivoCard({ titulo, hora, estado, oficioDeManana, onUnirse }: Props) {
   const horaTexto = formatearHora(hora);
+  const enCurso = estado === 'en_curso';
+  const terminada = estado === 'terminada';
+  const invitacionManana = oficioDeManana
+    ? ` Te esperamos mañana para orar ${oficioDeManana}.`
+    : '';
+  const descripcion = terminada
+    ? `La oración de hoy ya terminó. ¡Gracias por acompañarnos!${invitacionManana}`
+    : 'Te esperamos para unirnos a orar por las familias y las intenciones de nuestra comunidad.';
 
   return (
     <View style={styles.tarjeta}>
@@ -34,7 +43,13 @@ export function OracionEnVivoCard({ titulo, hora, enCurso, onUnirse }: Props) {
         <View
           style={styles.pildoraHora}
           accessible
-          accessibilityLabel={enCurso ? `En curso desde las ${horaTexto}` : `A las ${horaTexto}`}
+          accessibilityLabel={
+            enCurso
+              ? `En curso desde las ${horaTexto}`
+              : terminada
+                ? `Terminó; empezó a las ${horaTexto}`
+                : `A las ${horaTexto}`
+          }
         >
           {enCurso ? (
             <View style={styles.iconoHora}>
@@ -51,7 +66,7 @@ export function OracionEnVivoCard({ titulo, hora, enCurso, onUnirse }: Props) {
         {titulo}
       </AppText>
       <AppText color={TINTA} style={styles.descripcion}>
-        Te esperamos para unirnos a orar por las familias y las intenciones de nuestra comunidad.
+        {descripcion}
       </AppText>
 
       <View style={styles.enlace}>
@@ -78,7 +93,7 @@ export function OracionEnVivoCard({ titulo, hora, enCurso, onUnirse }: Props) {
             Unirse a la oración
           </AppText>
         </Pressable>
-        {!enCurso ? (
+        {estado === 'proxima' ? (
           <AppText variant="caption" color={TINTA_SUAVE}>
             El enlace estará disponible a partir de las {horaTexto}
           </AppText>

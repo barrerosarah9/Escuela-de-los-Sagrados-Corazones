@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking } from 'react-native';
 import {
-  estaEnCurso,
+  estadoDeOracion,
   fechaDeHoyEnBogota,
   obtenerOracionEnVivoDeHoy,
   type OracionEnVivo,
@@ -67,7 +67,7 @@ export function useOracionEnVivo() {
 
   return {
     oracion: oracionDeHoy,
-    enCurso: oracionDeHoy ? estaEnCurso(oracionDeHoy, ahora) : false,
+    estado: oracionDeHoy ? estadoDeOracion(oracionDeHoy, ahora) : null,
     recargar,
     unirse,
   };

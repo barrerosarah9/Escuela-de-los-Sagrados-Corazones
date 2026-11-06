@@ -48,7 +48,8 @@ export default function InicioScreen() {
           <OracionEnVivoCard
             titulo={oracionEnVivo.oracion.titulo}
             hora={oracionEnVivo.oracion.hora}
-            enCurso={oracionEnVivo.enCurso}
+            estado={oracionEnVivo.estado ?? 'proxima'}
+            oficioDeManana={oracionEnVivo.oracion.oficioDeManana}
             onUnirse={oracionEnVivo.unirse}
           />
         ) : undefined
