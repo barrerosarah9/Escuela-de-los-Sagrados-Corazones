@@ -97,3 +97,20 @@ export async function obtenerPaginaFeed(cursor: CursorFeed | null = null): Promi
     siguiente: hayMas && ultima ? { creadoEn: ultima.creadoEn, id: ultima.id } : null,
   };
 }
+
+export async function obtenerPublicacion(id: number): Promise<Publicacion | null> {
+  const { data, error } = await supabase
+    .from('publicaciones_con_conteos')
+    .select(COLUMNAS)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    throw new ErrorFeed(
+      esErrorDeRed(error.message) ? 'sin_conexion' : 'desconocido',
+      error.message,
+    );
+  }
+
+  return data ? aPublicacion(data as FilaPublicacion) : null;
+}

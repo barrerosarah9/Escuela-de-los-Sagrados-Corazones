@@ -1,4 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
+import { router } from 'expo-router';
 import { useCallback } from 'react';
 import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { EstadoError } from '../../components/estado-error';
@@ -14,9 +15,15 @@ import { colors } from '../../theme';
 export default function InicioScreen() {
   const feed = useFeed();
 
+  const abrirPublicacion = useCallback((publicacionId: number) => {
+    router.push({ pathname: '/publicacion/[id]', params: { id: String(publicacionId) } });
+  }, []);
+
   const renderItem = useCallback(
-    ({ item }: { item: Publicacion }) => <PublicacionCard publicacion={item} />,
-    [],
+    ({ item }: { item: Publicacion }) => (
+      <PublicacionCard publicacion={item} onAbrir={abrirPublicacion} />
+    ),
+    [abrirPublicacion],
   );
 
   if (feed.estado === 'cargando') {
