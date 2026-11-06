@@ -2,7 +2,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { createHashRouter, RouterProvider, useLocation, useNavigate } from "react-router";
 import logo from "./logo.webp";
 import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador, restaurarSesion, type Administrador } from "./lib/auth";
-import { crearPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
+import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
   | "Resumen"
@@ -49,6 +49,8 @@ const paths: Record<string, ReactNode> = {
   clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
   arrow: <path d="M19 12H5M12 19l-7-7 7-7"/>,
   upload: <><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/></>,
+  eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></>,
+  trash: <><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></>,
 };
 
 function Icon({ name, size = 20 }: { name: string; size?: number }) {
@@ -177,18 +179,27 @@ function Miniatura({ publicacion, className }: { publicacion: Publicacion; class
   return <div className={`${className} con-imagen`}><img src={urlImagen(primera)} alt=""/></div>;
 }
 
+function AccionIcono({ icon, label, onClick, disabled = false, tone = "neutral" }: { icon: string; label: string; onClick: () => void; disabled?: boolean; tone?: "neutral" | "danger" }) {
+  return <button type="button" className={`accion-icono${tone === "danger" ? " accion-peligro" : ""}`} aria-label={label} data-tip={label} disabled={disabled} onClick={onClick}><Icon name={icon} size={17}/></button>;
+}
+
 function Publications({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
   const [posts, setPosts] = useState<Publicacion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState("");
   const [creando, setCreando] = useState(false);
+  const [editando, setEditando] = useState<Publicacion | null>(null);
   const [detail, setDetail] = useState<Publicacion | null>(null);
   const [text, setText] = useState("");
+  const [conservadas, setConservadas] = useState<string[]>([]);
   const [images, setImages] = useState<ImagenNueva[]>([]);
   const [error, setError] = useState("");
   const [imageError, setImageError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [arrastrando, setArrastrando] = useState(false);
+  const [eliminando, setEliminando] = useState<Publicacion | null>(null);
+  const [borrandoId, setBorrandoId] = useState<number | null>(null);
+  const [errorAccion, setErrorAccion] = useState("");
   const [search, setSearch] = useState("");
   const [order, setOrder] = useState("Más recientes");
   const imagesRef = useRef<ImagenNueva[]>([]);
@@ -208,12 +219,21 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
   const limpiarFormulario = () => {
     images.forEach(i => URL.revokeObjectURL(i.vista));
     setImages([]);
+    setConservadas([]);
     setText("");
     setError("");
     setImageError("");
   };
-  const abrir = () => { limpiarFormulario(); setCreando(true); };
-  const cerrar = () => { if (guardando) return; limpiarFormulario(); setCreando(false); };
+  const abrir = () => { limpiarFormulario(); setErrorAccion(""); setEditando(null); setCreando(true); };
+  const abrirEdicion = (p: Publicacion) => {
+    limpiarFormulario();
+    setErrorAccion("");
+    setText(p.texto);
+    setConservadas(p.imagenes);
+    setEditando(p);
+    setCreando(true);
+  };
+  const cerrar = () => { if (guardando) return; limpiarFormulario(); setEditando(null); setCreando(false); };
 
   const pick = (files: FileList | null) => {
     if (!files) return;
@@ -222,7 +242,7 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
     Array.from(files).forEach(archivo => {
       const problema = validarImagen(archivo);
       if (problema) rechazadas.push(problema);
-      else if (images.length + validas.length >= MAXIMO_IMAGENES) rechazadas.push(`${archivo.name}: ${MENSAJES_PUBLICACION.demasiadas}`);
+      else if (conservadas.length + images.length + validas.length >= MAXIMO_IMAGENES) rechazadas.push(`${archivo.name}: ${MENSAJES_PUBLICACION.demasiadas}`);
       else validas.push({ id: crypto.randomUUID(), archivo, vista: URL.createObjectURL(archivo) });
     });
     setImages([...images, ...validas]);
@@ -233,22 +253,47 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
     URL.revokeObjectURL(imagen.vista);
     setImages(images.filter(i => i.id !== imagen.id));
   };
+  const quitarConservada = (ruta: string) => setConservadas(conservadas.filter(r => r !== ruta));
 
   const save = async () => {
     if (guardando) return;
-    if (!text.trim() && !images.length) { setError(MENSAJES_PUBLICACION.vacia); return; }
+    if (!text.trim() && !conservadas.length && !images.length) { setError(MENSAJES_PUBLICACION.vacia); return; }
     setGuardando(true);
     setError("");
-    const resultado = await crearPublicacion(admin.id, text, images.map(i => i.archivo));
+    const archivos = images.map(i => i.archivo);
+    const resultado = editando ? await editarPublicacion(editando, text, conservadas, archivos) : await crearPublicacion(admin.id, text, archivos);
     setGuardando(false);
     if (resultado.estado === "error") { setError(resultado.mensaje); return; }
-    setPosts([resultado.publicacion, ...posts]);
+    if (editando) {
+      setPosts(posts.map(p => p.id === resultado.publicacion.id ? resultado.publicacion : p));
+      if (detail?.id === resultado.publicacion.id) setDetail(resultado.publicacion);
+      notify("Publicación actualizada");
+    } else {
+      setPosts([resultado.publicacion, ...posts]);
+      notify("Publicación creada");
+    }
     limpiarFormulario();
+    setEditando(null);
     setCreando(false);
-    notify("Publicación creada");
   };
 
-  if (creando) return <><PageHead title="Nueva publicación" subtitle="Comparte una reflexión con toda la comunidad." action={<Button variant="secondary" icon="arrow" onClick={cerrar} disabled={guardando}>Volver</Button>}/>
+  const eliminar = async (p: Publicacion) => {
+    setBorrandoId(p.id);
+    setErrorAccion("");
+    const resultado = await eliminarPublicacion(p);
+    setBorrandoId(null);
+    if (resultado.estado === "error") { setErrorAccion(resultado.mensaje); return; }
+    setPosts(actuales => actuales.filter(x => x.id !== p.id));
+    if (detail?.id === p.id) setDetail(null);
+    notify("Publicación eliminada");
+  };
+
+  const conteo = (n: number, singular: string, plural: string) => `${n} ${n === 1 ? singular : plural}`;
+  const modalEliminar = eliminando && <Modal title="Eliminar publicación" danger action="Eliminar" onClose={() => setEliminando(null)} onConfirm={() => { void eliminar(eliminando); }}><p className="modal-text">«{tituloPublicacion(eliminando.texto)}» desaparecerá del feed junto con sus {conteo(eliminando.comentarios, "comentario", "comentarios")} y {conteo(eliminando.meGusta, "«Me gusta»", "«Me gusta»")}. Esta acción no se puede deshacer.</p></Modal>;
+  const avisoAccion = errorAccion && <div className="form-error" role="alert">{errorAccion}</div>;
+  const totalImagenes = conservadas.length + images.length;
+
+  if (creando) return <><PageHead title={editando ? "Editar publicación" : "Nueva publicación"} subtitle={editando ? `Publicada el ${fechaPublicacion(editando.creadoEn).toLowerCase()}. Los cambios se verán en el feed al guardar.` : "Comparte una reflexión con toda la comunidad."} action={<Button variant="secondary" icon="arrow" onClick={cerrar} disabled={guardando}>Volver</Button>}/>
     <Card className="form-card">
       <div className="form-section-title">Contenido de la publicación</div>
       <label className="field"><span>Texto</span><textarea rows={7} placeholder="Escribe aquí el mensaje para la comunidad…" value={text} disabled={guardando} onChange={e => { setText(e.target.value); setError(""); }}/></label>
@@ -258,23 +303,27 @@ function Publications({ admin, notify }: { admin: Administrador; notify: (s: str
           <label className="btn btn-secondary file-pick">Seleccionar imágenes<input type="file" accept="image/jpeg,image/png" multiple disabled={guardando} onChange={e => { pick(e.target.files); e.target.value = ""; }}/></label>
         </div>
         {imageError && <small>{imageError}</small>}
-        {images.length > 0 && <div className="image-previews">{images.map(imagen => <div className="image-preview" key={imagen.id}><img src={imagen.vista} alt={imagen.archivo.name}/><button className="icon-btn" aria-label={`Quitar ${imagen.archivo.name}`} disabled={guardando} onClick={() => quitar(imagen)}><Icon name="close" size={13}/></button></div>)}</div>}
+        {totalImagenes > 0 && <div className="image-previews">{conservadas.map((ruta, i) => <div className="image-preview" key={ruta}><img src={urlImagen(ruta)} alt={`Imagen ${i + 1} de la publicación`}/><button className="icon-btn" aria-label={`Quitar imagen ${i + 1}`} disabled={guardando} onClick={() => quitarConservada(ruta)}><Icon name="close" size={13}/></button></div>)}{images.map(imagen => <div className="image-preview" key={imagen.id}><img src={imagen.vista} alt={imagen.archivo.name}/><button className="icon-btn" aria-label={`Quitar ${imagen.archivo.name}`} disabled={guardando} onClick={() => quitar(imagen)}><Icon name="close" size={13}/></button></div>)}</div>}
       </div>
       {error && <div className="form-error" role="alert">{error}</div>}
-      <div className="form-actions"><Button variant="secondary" onClick={cerrar} disabled={guardando}>Cancelar</Button><Button onClick={save} disabled={guardando}>{guardando ? "Publicando…" : "Publicar ahora"}</Button></div>
+      <div className="form-actions"><Button variant="secondary" onClick={cerrar} disabled={guardando}>Cancelar</Button><Button onClick={save} disabled={guardando}>{guardando ? (editando ? "Guardando…" : "Publicando…") : (editando ? "Guardar cambios" : "Publicar ahora")}</Button></div>
     </Card></>;
 
-  if (detail) return <><PageHead title="Detalle de publicación" subtitle={`Publicada el ${fechaPublicacion(detail.creadoEn).toLowerCase()}.`} action={<Button variant="secondary" icon="arrow" onClick={() => setDetail(null)}>Volver</Button>}/>
+  if (detail) return <><PageHead title="Detalle de publicación" subtitle={`Publicada el ${fechaPublicacion(detail.creadoEn).toLowerCase()}.`} action={<div className="head-actions"><Button variant="secondary" icon="arrow" onClick={() => { setErrorAccion(""); setDetail(null); }}>Volver</Button><Button variant="secondary" icon="edit" disabled={borrandoId === detail.id} onClick={() => abrirEdicion(detail)}>Editar</Button><Button variant="danger" disabled={borrandoId === detail.id} onClick={() => setEliminando(detail)}>{borrandoId === detail.id ? "Eliminando…" : "Eliminar"}</Button></div>}/>
+    {avisoAccion}
     <div className="detail-grid">
       <Card><Miniatura publicacion={detail} className="post-hero"/><div className="post-detail-copy"><div className="eyebrow">{fechaPublicacion(detail.creadoEn)}</div><div className="card-title">{tituloPublicacion(detail.texto)}</div>{detail.texto && <p>{detail.texto}</p>}{detail.imagenes.length > 1 && <div className="post-gallery">{detail.imagenes.map(ruta => <a key={ruta} href={urlImagen(ruta)} target="_blank" rel="noreferrer"><img src={urlImagen(ruta)} alt=""/></a>)}</div>}<div className="post-metrics"><span>{detail.meGusta} Me gusta</span><span>{detail.comentarios} comentarios</span></div></div></Card>
       <Card><div className="card-head"><div className="card-title">Comentarios</div><Badge tone="info">{detail.comentarios}</Badge></div><Empty title="Comentarios" text="La moderación de comentarios llega en una próxima versión del portal."/></Card>
-    </div></>;
+    </div>
+    {modalEliminar}</>;
 
   const shown = posts.filter(p => p.texto.toLowerCase().includes(search.toLowerCase()));
   const sorted = order === "Más recientes" ? shown : [...shown].reverse();
   return <><PageHead title="Publicaciones" subtitle="Mensajes y reflexiones para la comunidad." action={<Button icon="plus" onClick={abrir}>Nueva publicación</Button>}/>
     <div className="toolbar"><div className="search"><Icon name="search" size={18}/><input placeholder="Buscar publicaciones…" value={search} onChange={e => setSearch(e.target.value)}/></div><Select value={order} onChange={setOrder}><option>Más recientes</option><option>Más antiguas</option></Select></div>
-    <Card className="posts-list">{cargando ? <Empty title="Cargando publicaciones…" text="Un momento, por favor."/> : errorCarga ? <Empty title="No pudimos cargar las publicaciones" text={errorCarga}/> : sorted.length ? sorted.map(p => <div className="post-row" key={p.id}><Miniatura publicacion={p} className="post-thumb"/><div className="post-copy" onClick={() => setDetail(p)}><small>{fechaPublicacion(p.creadoEn)}</small><b>{tituloPublicacion(p.texto)}</b><p>{p.texto || `${p.imagenes.length} ${p.imagenes.length === 1 ? "imagen" : "imágenes"}`}</p></div><div className="post-counts"><span>{p.comentarios} comentarios</span><span>{p.meGusta} Me gusta</span></div><div className="row-actions"><Button variant="ghost" onClick={() => setDetail(p)}>Ver detalle</Button></div></div>) : posts.length ? <Empty title="No encontramos publicaciones" text="Prueba con otras palabras."/> : <Empty title="Aún no hay publicaciones" text="Crea la primera con «Nueva publicación»."/>}</Card></>;
+    {avisoAccion}
+    <Card className="posts-list">{cargando ? <Empty title="Cargando publicaciones…" text="Un momento, por favor."/> : errorCarga ? <Empty title="No pudimos cargar las publicaciones" text={errorCarga}/> : sorted.length ? sorted.map(p => <div className="post-row" key={p.id}><Miniatura publicacion={p} className="post-thumb"/><div className="post-copy" onClick={() => setDetail(p)}><small>{fechaPublicacion(p.creadoEn)}</small><b>{tituloPublicacion(p.texto)}</b><p>{p.texto || `${p.imagenes.length} ${p.imagenes.length === 1 ? "imagen" : "imágenes"}`}</p></div><div className="post-counts"><span>{p.comentarios} comentarios</span><span>{p.meGusta} Me gusta</span></div><div className="post-acciones"><AccionIcono icon="eye" label="Ver detalle" onClick={() => setDetail(p)}/><AccionIcono icon="edit" label="Editar" disabled={borrandoId === p.id} onClick={() => abrirEdicion(p)}/><AccionIcono icon="trash" label={borrandoId === p.id ? "Eliminando…" : "Eliminar"} tone="danger" disabled={borrandoId === p.id} onClick={() => setEliminando(p)}/></div></div>) : posts.length ? <Empty title="No encontramos publicaciones" text="Prueba con otras palabras."/> : <Empty title="Aún no hay publicaciones" text="Crea la primera con «Nueva publicación»."/>}</Card>
+    {modalEliminar}</>;
 }
 
 function Comment({ name, date, text, onDelete }: { name: string; date: string; text: string; onDelete: () => void }) {
