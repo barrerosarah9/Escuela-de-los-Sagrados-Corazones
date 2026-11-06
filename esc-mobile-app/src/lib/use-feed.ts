@@ -28,12 +28,14 @@ export function useFeed() {
   const [errorAlCargarMas, setErrorAlCargarMas] = useState(false);
   const generacion = useRef(0);
   const pidiendoMas = useRef(false);
+  const hayDatos = useRef(false);
 
   const resolverPrimeraPagina = useCallback(
     async (miGeneracion: number, modo: 'inicial' | 'refresco') => {
       try {
         const pagina = await obtenerPaginaFeed(null);
         if (miGeneracion !== generacion.current) return;
+        hayDatos.current = pagina.publicaciones.length > 0;
         setPublicaciones(pagina.publicaciones);
         setSiguiente(pagina.siguiente);
         setMotivoError(null);
@@ -41,7 +43,7 @@ export function useFeed() {
       } catch (error) {
         if (miGeneracion !== generacion.current) return;
         setMotivoError(motivoDe(error));
-        if (modo === 'inicial') setEstado('error');
+        if (modo === 'inicial' || !hayDatos.current) setEstado('error');
       } finally {
         if (miGeneracion === generacion.current) setRefrescando(false);
       }

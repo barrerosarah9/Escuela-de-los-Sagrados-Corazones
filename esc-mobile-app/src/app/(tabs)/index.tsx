@@ -1,19 +1,15 @@
 import { FlashList } from '@shopify/flash-list';
 import { useCallback } from 'react';
-import { ActivityIndicator, RefreshControl, StyleSheet, View } from 'react-native';
-import { AppText } from '../../components/app-text';
-import { Button } from '../../components/button';
+import { RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { EstadoError } from '../../components/estado-error';
+import { EstadoVacio } from '../../components/estado-vacio';
 import { FeedEncabezado } from '../../components/feed-encabezado';
 import { FeedPie } from '../../components/feed-pie';
 import { PublicacionCard } from '../../components/publicacion-card';
+import { ListaPublicacionesSkeleton } from '../../components/publicacion-skeleton';
 import type { Publicacion } from '../../lib/feed';
 import { useFeed } from '../../lib/use-feed';
 import { colors } from '../../theme';
-
-const MENSAJES_ERROR = {
-  sin_conexion: 'No hay conexión a internet. Revisa tu red e inténtalo de nuevo.',
-  desconocido: 'No pudimos cargar las publicaciones. Inténtalo de nuevo en unos minutos.',
-} as const;
 
 export default function InicioScreen() {
   const feed = useFeed();
@@ -25,23 +21,33 @@ export default function InicioScreen() {
 
   if (feed.estado === 'cargando') {
     return (
-      <View style={styles.centro}>
-        <ActivityIndicator color={colors.primary} accessibilityLabel="Cargando publicaciones" />
-      </View>
+      <ScrollView style={styles.lista} scrollEnabled={false}>
+        <FeedEncabezado />
+        <ListaPublicacionesSkeleton etiqueta="Cargando publicaciones" />
+      </ScrollView>
     );
   }
 
   if (feed.estado === 'error') {
     return (
-      <View style={[styles.centro, styles.conMargen]}>
-        <AppText variant="subtitle" style={styles.textoCentrado}>
-          No se pudo cargar el feed
-        </AppText>
-        <AppText style={styles.textoCentrado}>
-          {MENSAJES_ERROR[feed.motivoError ?? 'desconocido']}
-        </AppText>
-        <Button title="Reintentar" onPress={feed.reintentar} style={styles.boton} />
-      </View>
+      <ScrollView
+        style={styles.lista}
+        refreshControl={
+          <RefreshControl
+            refreshing={false}
+            onRefresh={feed.reintentar}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
+        <FeedEncabezado />
+        <EstadoError
+          motivo={feed.motivoError ?? 'desconocido'}
+          titulo="No se pudo cargar el feed"
+          onReintentar={feed.reintentar}
+        />
+      </ScrollView>
     );
   }
 
@@ -53,14 +59,11 @@ export default function InicioScreen() {
       renderItem={renderItem}
       ListHeaderComponent={<FeedEncabezado />}
       ListEmptyComponent={
-        <View style={styles.vacio}>
-          <AppText variant="subtitle" style={styles.textoCentrado}>
-            Aún no hay publicaciones
-          </AppText>
-          <AppText style={styles.textoCentrado}>
-            Cuando la comunidad comparta novedades, aparecerán aquí.
-          </AppText>
-        </View>
+        <EstadoVacio
+          icono="newspaper-outline"
+          titulo="Aún no hay publicaciones"
+          mensaje="Cuando la comunidad comparta novedades, aparecerán aquí."
+        />
       }
       ListFooterComponent={
         <FeedPie
@@ -89,28 +92,5 @@ const styles = StyleSheet.create({
   lista: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  centro: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: colors.background,
-  },
-  conMargen: {
-    paddingHorizontal: 32,
-  },
-  textoCentrado: {
-    textAlign: 'center',
-  },
-  boton: {
-    alignSelf: 'stretch',
-    marginTop: 8,
-  },
-  vacio: {
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 32,
-    paddingVertical: 48,
   },
 });
