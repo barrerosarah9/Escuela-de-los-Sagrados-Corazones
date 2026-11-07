@@ -252,3 +252,21 @@ a.vista-previa:hover{border-color:var(--cherry);box-shadow:0 0 0 2px rgba(161,30
 .contenido-vista>span{display:block;font-size:10px;font-weight:600;margin-bottom:7px}
 .contenido-vista img{display:block;width:100%;max-height:220px;object-fit:contain;border-radius:11px;border:1px solid var(--line);background:var(--canvas)}
 .library-drawer .field input[type=number]{max-width:160px}
+.library-drawer{color:var(--ink)}
+.library-drawer .drawer-head small{font-size:12px;font-weight:700;letter-spacing:.02em}
+.library-drawer .modal-title{font-size:23px;font-weight:700}
+.library-drawer .drawer-body{gap:24px}
+.library-drawer .field{font-size:14px}
+.library-drawer .field>span,.library-drawer .content-field>span{font-size:14px;font-weight:700;color:var(--ink)}
+.library-drawer .field input,.library-drawer .field select{font-size:14px;font-weight:500;color:var(--ink);min-height:46px;border-color:rgba(25,14,14,.22)}
+.library-drawer .field input::placeholder{color:#8d847e;font-weight:400}
+.library-drawer .field small{font-size:12.5px;font-weight:600;line-height:1.4}
+.library-drawer .content-fields{gap:20px;padding:20px}
+.library-drawer .content-fields-head b{font-size:16px;font-weight:700}
+.library-drawer .content-fields-head small{font-size:13px;color:#5f5752;margin-top:5px}
+.library-drawer .content-fields-head small.required-note{color:var(--cherry);font-weight:600}
+.library-drawer .drawer-dropzone b{font-size:14px;font-weight:700}
+.library-drawer .drawer-dropzone p{font-size:12.5px;font-weight:500;color:#5f5752}
+.library-drawer .file-chip b{font-size:13px;font-weight:600}
+.library-drawer .contenido-vista>span{font-size:14px;font-weight:700}
+.library-drawer .drawer-actions .btn{font-size:14px;font-weight:700;min-height:44px;padding-left:20px;padding-right:20px}
