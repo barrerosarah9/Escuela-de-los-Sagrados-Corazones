@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { createHashRouter, RouterProvider, useLocation, useNavigate } from "react-router";
 import logo from "./logo.webp";
 import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador, restaurarSesion, type Administrador } from "./lib/auth";
+import { listarAsistentes, type Asistente } from "./lib/asistencias";
 import { eliminarComentario, listarComentarios, type Comentario } from "./lib/comentarios";
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
@@ -408,6 +409,76 @@ const rangoDeSemana = (lunes: string) => {
 const formularioVacio = (fecha: string, oficios: Record<number, string>): DatosOracionEnVivo => ({ fecha, hora: HORA_PREDETERMINADA, titulo: tituloSugerido(fecha, oficios), enlaceMeet: "" });
 const datosDe = (oracion: OracionEnVivo): DatosOracionEnVivo => ({ fecha: oracion.fecha, hora: oracion.hora, titulo: oracion.titulo, enlaceMeet: oracion.enlaceMeet });
 
+const horaConfirmacion = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getDate()} ${monthNames[d.getMonth()].slice(0, 3)} · ${d.toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" })}`;
+};
+
+function FilaAsistente({ asistente }: { asistente: Asistente }) {
+  return <div>
+    <span className="avatar comentario-avatar">{iniciales(asistente.nombre)}{asistente.fotoUrl && <img src={asistente.fotoUrl} alt="" onError={e => { e.currentTarget.style.display = "none"; }}/>}</span>
+    <span style={{ display: "grid" }}><b>{asistente.nombre}</b>{asistente.correo && <small>{asistente.correo}</small>}</span>
+    <small title="Fecha en que confirmó">{horaConfirmacion(asistente.confirmadoEn)}</small>
+  </div>;
+}
+
+function AsistentesOracion({ oracion, fecha, cargandoSemana }: { oracion: OracionEnVivo | null; fecha: string; cargandoSemana: boolean }) {
+  const [asistentes, setAsistentes] = useState<Asistente[]>([]);
+  const [total, setTotal] = useState(0);
+  const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [actualizadoEn, setActualizadoEn] = useState<Date | null>(null);
+  const [intento, setIntento] = useState(0);
+  const oracionId = oracion?.id ?? null;
+
+  useEffect(() => {
+    setAsistentes([]);
+    setTotal(0);
+    setErrorCarga("");
+    setActualizadoEn(null);
+  }, [oracionId]);
+
+  useEffect(() => {
+    if (oracionId === null) return;
+    let activo = true;
+    setCargando(true);
+    setErrorCarga("");
+    listarAsistentes(oracionId)
+      .then(resultado => {
+        if (!activo) return;
+        setAsistentes(resultado.asistentes);
+        setTotal(resultado.total);
+        setActualizadoEn(new Date());
+      })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
+      .finally(() => { if (activo) setCargando(false); });
+    return () => { activo = false; };
+  }, [oracionId, intento]);
+
+  useEffect(() => {
+    if (oracionId === null) return;
+    const alVolver = () => { if (document.visibilityState === "visible") setIntento(n => n + 1); };
+    document.addEventListener("visibilitychange", alVolver);
+    return () => document.removeEventListener("visibilitychange", alVolver);
+  }, [oracionId]);
+
+  const actualizar = () => setIntento(n => n + 1);
+  const subtitulo = actualizadoEn ? `Encuentro del ${fechaLarga(fecha)} · actualizado a las ${actualizadoEn.toLocaleTimeString("es-CO", { hour: "numeric", minute: "2-digit" })}` : `Encuentro del ${fechaLarga(fecha)}`;
+  const encabezado = <div className="card-head"><div><div className="card-title">Asistentes confirmados</div><div className="muted">{subtitulo}</div></div>{oracion && <Button variant="secondary" disabled={cargando} onClick={actualizar}>{cargando ? "Actualizando…" : "Actualizar"}</Button>}</div>;
+
+  if (cargandoSemana) return <Card>{encabezado}<Empty title="Cargando…" text="Un momento, por favor."/></Card>;
+  if (!oracion) return <Card>{encabezado}<Empty title="Sin oración programada" text="Cuando programes la oración de este día, aquí verás quiénes confirmaron asistencia desde la app."/></Card>;
+  if (errorCarga) return <Card>{encabezado}<Empty title="No pudimos cargar los asistentes" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={actualizar}>Reintentar</Button></div></Card>;
+  if (cargando && !actualizadoEn) return <Card>{encabezado}<Empty title="Cargando asistentes…" text="Un momento, por favor."/></Card>;
+
+  return <Card>{encabezado}
+    <div className="big-count" aria-live="polite">{total}</div>
+    <div className="muted">{total === 1 ? "persona confirmó asistencia" : "personas confirmaron asistencia"}</div>
+    {total ? <div className="attendees attendee-scroll" style={{ marginTop: 12 }}>{asistentes.map(a => <FilaAsistente key={a.id} asistente={a}/>)}</div>
+      : <Empty title="Nadie ha confirmado todavía" text="Cuando alguien confirme su asistencia desde la app, aparecerá aquí. Usa «Actualizar» para ver los cambios."/>}
+  </Card>;
+}
+
 function LivePrayer({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
   const hoy = useMemo(() => fechaDeHoyEnBogota(), []);
   const [lunes, setLunes] = useState(() => lunesDeLaSemana(hoy));
@@ -540,9 +611,7 @@ function LivePrayer({ admin, notify }: { admin: Administrador; notify: (s: strin
           {!pasado && <div className="form-actions"><Button type="submit" disabled={guardando || cargando || Boolean(conflicto)}>{textoBoton}</Button></div>}
         </form>
       </Card>
-      <Card><div className="card-head"><div><div className="card-title">Asistentes confirmados</div><div className="muted">Encuentro del {fechaLarga(seleccion)}</div></div></div>
-        <Empty title="Disponible pronto" text="Aquí verás quiénes confirmaron asistencia a esta oración."/>
-      </Card>
+      <AsistentesOracion oracion={existente} fecha={seleccion} cargandoSemana={cargando}/>
     </div></>;
 }
 
