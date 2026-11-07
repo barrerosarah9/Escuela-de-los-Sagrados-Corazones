@@ -5,6 +5,7 @@ import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador,
 import { listarAsistentes, type Asistente } from "./lib/asistencias";
 import { eliminarComentario, listarComentarios, type Comentario } from "./lib/comentarios";
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
+import { CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, listarContenidos, listarOracionesBiblioteca, type ContenidoBiblioteca, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type SeccionBiblioteca } from "./lib/biblioteca";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -618,9 +619,6 @@ function LivePrayer({ admin, notify }: { admin: Administrador; notify: (s: strin
 type LibraryTab = "Santifica el día" | "Santifica la semana" | "Santifica el mes" | "Santifica el año" | "Imágenes del widget";
 type LibraryFormat = "PDF" | "YouTube" | "Imagen";
 type LibraryItem = { name: string; format?: LibraryFormat; formats?: LibraryFormat[]; youtube?: string; date?: string; filled: boolean; variant?: number };
-const itemFormats = (item: LibraryItem): LibraryFormat[] => item.formats ?? (item.format ? [item.format] : []);
-const FormatBadges = ({ item }: { item: LibraryItem }) => <span className="format-badges">{itemFormats(item).map(f => <Badge key={f} tone="neutral">{f}</Badge>)}</span>;
-const isYouTube = (value: string) => /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|live\/)|youtu\.be\/)[\w-]{6,}/i.test(value.trim());
 type LibraryGroup = { title: string; target: number; items: LibraryItem[]; children?: LibraryGroup[] };
 
 const makeVariants = (prefix: string, total: number, filled: number): LibraryItem[] =>
@@ -681,118 +679,193 @@ const widgetImages: LibraryItem[] = [
   { name: "Jesús Eucaristía", format: "Imagen", date: "18 sep. 2026", filled: true },
 ];
 
-const groupItems = (group: LibraryGroup) => group.children ? group.children.flatMap(child => child.items) : group.items;
-const tabCount = (tab: LibraryTab) => tab === "Imágenes del widget"
-  ? widgetImages.length
-  : libraryGroups[tab].reduce((sum, group) => sum + groupItems(group).filter(item => item.filled).length, 0);
-
 const libraryMeta: Record<LibraryTab, { slug: string; description: string; icon: string }> = {
   "Santifica el día": { slug: "santifica-el-dia", description: "Oraciones fijas y variables de cada día", icon: "clock" },
-  "Santifica la semana": { slug: "santifica-la-semana", description: "Oficios de cada día de la semana", icon: "calendar" },
-  "Santifica el mes": { slug: "santifica-el-mes", description: "Oficios del primer jueves, viernes y sábado", icon: "star" },
+  "Santifica la semana": { slug: "santifica-la-semana", description: "Oficios de lunes a viernes y domingo, y la Hora de María de cada sábado", icon: "calendar" },
+  "Santifica el mes": { slug: "santifica-el-mes", description: "Primer jueves, primeros viernes diurnos, vigilias de reparación y primer sábado", icon: "star" },
   "Santifica el año": { slug: "santifica-el-ano", description: "Consagraciones anuales", icon: "heart" },
   "Imágenes del widget": { slug: "imagenes-del-widget", description: "Imágenes diarias del widget", icon: "library" },
 };
 
-const tabMissing = (tab: LibraryTab) => tab === "Imágenes del widget"
-  ? 0
-  : libraryGroups[tab].reduce((sum, group) => sum + groupItems(group).filter(item => !item.filled).length, 0);
+const seccionDeTipo: Record<LibraryTab, SeccionBiblioteca> = {
+  "Santifica el día": "dia",
+  "Santifica la semana": "semana",
+  "Santifica el mes": "mes",
+  "Santifica el año": "anio",
+  "Imágenes del widget": "widget",
+};
+const tiposBiblioteca = Object.keys(seccionDeTipo) as LibraryTab[];
+const nombresDia = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const textoContenidos = (n: number) => `${n} ${n === 1 ? "contenido" : "contenidos"}`;
+const fechaActualizacion = (iso: string) => new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
+const fechaSabado = (fecha: string) => { const [anio, mes, dia] = partesDeFecha(fecha); return `Sábado ${dia} de ${monthNames[mes - 1]} de ${anio}`; };
+const ordenarOraciones = (oraciones: OracionBiblioteca[]) => [...oraciones].sort((a, b) => Number(a.esFija) - Number(b.esFija) || a.orden - b.orden);
+const proximamente = (notify: (s: string) => void, accion: string) => () => notify(`${accion} estará disponible pronto`);
 
+function tituloOracion(oracion: OracionBiblioteca) {
+  if (oracion.seccion === "semana" && oracion.diaSemana) return `${nombresDia[oracion.diaSemana - 1]} · ${oracion.nombre}`;
+  return oracion.nombre;
+}
 
+function detalleOracion(oracion: OracionBiblioteca) {
+  if (oracion.esFija && oracion.maxContenidos) return `Fija · ${oracion.totalContenidos} de ${oracion.maxContenidos} · se ${oracion.maxContenidos === 1 ? "muestra" : "muestran"} todos los días`;
+  if (oracion.clave === "hora-maria") return `Una por cada sábado · ${textoContenidos(oracion.totalContenidos)}`;
+  if (oracion.seccion === "anio") return `Días 1 a 30 · ${textoContenidos(oracion.totalContenidos)}`;
+  return textoContenidos(oracion.totalContenidos);
+}
 
-function LibraryContentRow({ item, index, onEdit, onDelete, confirm }: { item: LibraryItem; index: number; onEdit: () => void; onDelete: () => void; confirm:(a:string,b:string,ok?:()=>void)=>void }) {
+function detalleContenido(contenido: ContenidoBiblioteca, oracion: OracionBiblioteca) {
+  if (contenido.fecha) return fechaSabado(contenido.fecha);
+  if (oracion.seccion === "anio" && contenido.numero) return `Día ${contenido.numero} de 30`;
+  return "";
+}
+
+function Formatos({ formatos }: { formatos: FormatoContenido[] }) {
+  return <span className="format-badges">{formatos.map(f => <Badge key={f} tone="neutral">{f}</Badge>)}</span>;
+}
+
+function VistaPrevia({ contenido, grande = false }: { contenido: ContenidoBiblioteca; grande?: boolean }) {
+  const [fallo, setFallo] = useState(false);
+  const imagen = !fallo ? contenido.imagenUrl ?? contenido.youtubeMiniatura : null;
+  const enlace = contenido.imagenUrl ?? contenido.youtubeUrl ?? contenido.pdfUrl;
+  const esVideo = !contenido.imagenUrl && !!contenido.youtubeMiniatura;
+  const formato = contenido.formatos.includes("Imagen") ? "Imagen" : contenido.formatos.includes("YouTube") ? "YouTube" : "PDF";
+  const icono = formato === "Imagen" ? "library" : formato === "YouTube" ? "video" : "book";
+  const clase = `vista-previa ${grande ? "vista-previa-grande" : ""} vista-${formato.toLowerCase()}`;
+  const cuerpo = imagen
+    ? <><img src={imagen} alt={`Vista previa de ${contenido.nombre}`} loading="lazy" onError={() => setFallo(true)}/>{esVideo && <span className="vista-play"><Icon name="video" size={grande ? 22 : 14}/></span>}</>
+    : <><Icon name={icono} size={grande ? 30 : 18}/>{grande && <small>Vista previa no disponible</small>}</>;
+  return enlace
+    ? <a className={clase} href={enlace} target="_blank" rel="noreferrer" title={`Abrir ${formato === "YouTube" ? "el video" : formato === "PDF" ? "el PDF" : "la imagen"}`}>{cuerpo}</a>
+    : <span className={clase} title="El archivo todavía no está disponible">{cuerpo}</span>;
+}
+
+function Paginacion({ pagina, totalPaginas, total, mostrados, porPagina, cargando, onCambiar }: { pagina: number; totalPaginas: number; total: number; mostrados: number; porPagina: number; cargando: boolean; onCambiar: (pagina: number) => void }) {
+  if (totalPaginas <= 1) return null;
+  const desde = (pagina - 1) * porPagina + 1;
+  return <div className="pagination library-pagination"><span>Mostrando {desde}–{desde + mostrados - 1} de {total}</span><div>
+    <button disabled={cargando || pagina === 1} onClick={() => onCambiar(pagina - 1)}>Anterior</button>
+    {Array.from({ length: totalPaginas }, (_, i) => i + 1).map(n => <button key={n} className={n === pagina ? "active" : ""} disabled={cargando} onClick={() => onCambiar(n)}>{n}</button>)}
+    <button disabled={cargando || pagina === totalPaginas} onClick={() => onCambiar(pagina + 1)}>Siguiente</button>
+  </div></div>;
+}
+
+function usePaginaContenidos(oracionId: number, porPagina: number) {
+  const [pagina, setPagina] = useState(1);
+  const [datos, setDatos] = useState<PaginaContenidos | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [intento, setIntento] = useState(0);
+
+  useEffect(() => {
+    let activo = true;
+    setCargando(true);
+    setErrorCarga("");
+    listarContenidos(oracionId, pagina, porPagina)
+      .then(resultado => {
+        if (!activo) return;
+        setDatos(resultado);
+        if (resultado.pagina !== pagina) setPagina(resultado.pagina);
+      })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
+      .finally(() => { if (activo) setCargando(false); });
+    return () => { activo = false; };
+  }, [oracionId, pagina, porPagina, intento]);
+
+  return { pagina, setPagina, datos, cargando, errorCarga, reintentar: () => setIntento(n => n + 1) };
+}
+
+function FilaContenidoBiblioteca({ contenido, oracion, notify }: { contenido: ContenidoBiblioteca; oracion: OracionBiblioteca; notify: (s: string) => void }) {
+  const detalle = detalleContenido(contenido, oracion);
   return <div className="library-row">
-    <div className="resource-name"><span className={`file-icon f-${index%3}`}><Icon name={itemFormats(item).length === 1 && itemFormats(item)[0] === "Imagen" ? "library" : "book"}/></span><div><b>{item.name}</b></div></div>
-    <div><FormatBadges item={item}/></div>
-    <span className="library-date">{item.date}</span>
-    <div className="row-actions"><Button variant="ghost" onClick={onEdit}>Editar</Button><Button variant="ghost" onClick={()=>confirm("Eliminar contenido","Este recurso puede estar asignado a días futuros del calendario. Si continúas, esos días quedarán incompletos.",onDelete)}>Eliminar</Button></div>
+    <div className="resource-name"><VistaPrevia contenido={contenido}/><div><b>{contenido.nombre}</b>{detalle && <small>{detalle}</small>}</div></div>
+    <div><Formatos formatos={contenido.formatos}/></div>
+    <span className="library-date">Actualizado {fechaActualizacion(contenido.actualizadoEn)}</span>
+    <div className="row-actions"><Button variant="ghost" onClick={proximamente(notify, "Editar contenidos")}>Editar</Button><Button variant="ghost" onClick={proximamente(notify, "Eliminar contenidos")}>Eliminar</Button></div>
   </div>;
 }
 
-function Library({ confirm, notify, active, onOpen, onBack }: { confirm: (a: string,b: string,ok?: () => void) => void; notify: (s:string)=>void; active: LibraryTab | null; onOpen: (tab: LibraryTab) => void; onBack: () => void }) {
-  const tabs: LibraryTab[] = ["Santifica el día","Santifica la semana","Santifica el mes","Santifica el año","Imágenes del widget"];
-  const [search,setSearch]=useState("");
-  const [open,setOpen]=useState<Record<string,boolean>>({});
-  const [panel,setPanel]=useState<{prayer:string;item?:LibraryItem}|null>(null);
-  const [pdfFile,setPdfFile]=useState("");
-  const [youtube,setYoutube]=useState("");
-  const [imageFile,setImageFile]=useState("");
-  const [name,setName]=useState("");
-  const [saturday,setSaturday]=useState("2026-10-17");
-  const [saturdayError,setSaturdayError]=useState("");
-  const [added,setAdded]=useState<Record<string,LibraryItem[]>>({});
-  const [edited,setEdited]=useState<Record<string,LibraryItem>>({});
-  const [removed,setRemoved]=useState<string[]>([]);
-  const removeItem=(prayer:string,item:LibraryItem)=>{setRemoved([...removed,`${prayer}|${item.name}`]);notify("Contenido eliminado");};
-  const groups=!active||active==="Imágenes del widget"?[]:libraryGroups[active];
-  const matches=(value:string)=>value.toLowerCase().includes(search.toLowerCase());
-  const existing=(prayer:string,items:LibraryItem[])=>items.filter(item=>item.filled).map(item=>edited[`${prayer}|${item.name}`]||item).concat(added[prayer]||[]).filter(item=>!removed.includes(`${prayer}|${item.name}`));
-  const visibleGroups=groups.map(group=>{
-    if(!search||matches(group.title))return group;
-    if(group.children){const children=group.children.map(child=>({...child,items:child.items.filter(item=>item.filled&&matches(item.name))})).filter(child=>matches(child.title)||child.items.length);return children.length?{...group,children}:null}
-    const items=group.items.filter(item=>item.filled&&matches(item.name));return items.length?{...group,items}:null;
-  }).filter(Boolean) as LibraryGroup[];
+function ContenidosOracion({ oracion, notify }: { oracion: OracionBiblioteca; notify: (s: string) => void }) {
+  const { pagina, setPagina, datos, cargando, errorCarga, reintentar } = usePaginaContenidos(oracion.id, CONTENIDOS_POR_PAGINA);
+  const lleno = oracion.maxContenidos !== null && (datos?.total ?? oracion.totalContenidos) >= oracion.maxContenidos;
 
-  const generatedName=(prayer:string,items:LibraryItem[])=>{
-    const current=existing(prayer,items);
-    if(active==="Santifica el año")return `Día ${current.length+1}`;
-    if(active==="Santifica la semana"){
-      if(prayer.includes("Hora de María"))return "";
-      const prefix=current[0]?.name.replace(/\s+\d+$/,"")||prayer.split(" · ")[0];
-      return `${prefix} ${current.length+1}`;
-    }
-    if(active==="Santifica el mes"){
-      const prefixes:Record<string,string>={"Viernes diurnos":"Viernes diurno","Vigilias de reparación":"Vigilia"};
-      return `${prefixes[prayer]||prayer} ${current.length+1}`;
-    }
-    return `${prayer} · 13 de octubre`;
-  };
-  const openPanel=(prayer:string,items:LibraryItem[],item?:LibraryItem)=>{
-    const formats=item?itemFormats(item):[];setPanel({prayer,item});setPdfFile(formats.includes("PDF")?`${item?.name}.pdf`:"");setYoutube(formats.includes("YouTube")?item?.youtube||"https://www.youtube.com/watch?v=dQw4w9WgXcQ":"");setImageFile(formats.includes("Imagen")?`${item?.name}.jpg`:"");setName(item?.name||generatedName(prayer,items));setSaturday("2026-10-17");setSaturdayError("");
-  };
-  const savePanel=()=>{
-    if(!panel||!active)return;
-    if(panel.prayer.includes("Hora de María")&&new Date(`${saturday}T12:00:00`).getDay()!==6){setSaturdayError("Selecciona una fecha que corresponda a un sábado");return}
-    const finalName=panel.prayer.includes("Hora de María")?`Hora de María · ${new Date(`${saturday}T12:00:00`).toLocaleDateString("es-CO",{day:"numeric",month:"long"})}`:name;
-    if(!canSave)return;
-    const formats:LibraryFormat[]=active==="Imágenes del widget"?["Imagen"]:[...(pdfFile?["PDF" as const]:[]),...(youtube.trim()?["YouTube" as const]:[]),...(imageFile?["Imagen" as const]:[])];
-    const item:LibraryItem={name:finalName,formats,youtube:youtube.trim()||undefined,date:"13 oct. 2026",filled:true};
-    if(panel.item)setEdited({...edited,[`${panel.prayer}|${panel.item.name}`]:item});
-    else setAdded({...added,[panel.prayer]:[...(added[panel.prayer]||[]),item]});
-    setPanel(null);notify(panel.item?"Contenido actualizado correctamente":"Contenido agregado a la biblioteca");
-  };
-  const panelTitle=panel&&active?`${active} · ${panel.prayer}`:"";
-  const isWidget=active==="Imágenes del widget";
-  const youtubeError=youtube.trim()&&!isYouTube(youtube)?"Ingresa un enlace válido de YouTube":"";
-  const hasContent=isWidget?!!imageFile:!!(pdfFile||youtube.trim()||imageFile);
-  const canSave=hasContent&&!youtubeError;
-  const fileField=(label:string,hint:string,value:string,setValue:(v:string)=>void,sample:string,icon:string)=><div className="field content-field"><span><Icon name={icon} size={15}/>{label}</span>{value?<div className="file-chip"><Icon name={icon} size={16}/><b>{value}</b><button className="icon-btn" aria-label={`Quitar ${label}`} onClick={()=>setValue("")}><Icon name="close" size={14}/></button></div>:<div className="drawer-dropzone"><Icon name="upload"/><b>Selecciona o arrastra un archivo</b><p>{hint}</p><Button variant="secondary" onClick={()=>setValue(sample)}>Seleccionar archivo</Button></div>}</div>;
+  let lista: ReactNode;
+  if (errorCarga) lista = <div className="prayer-empty"><p>{errorCarga}</p><Button variant="secondary" onClick={reintentar}>Reintentar</Button></div>;
+  else if (!datos) lista = <div className="prayer-empty"><p>Cargando contenidos…</p></div>;
+  else if (!datos.contenidos.length) lista = <div className="prayer-empty"><p>Aún no hay contenidos para esta oración</p></div>;
+  else lista = <div className={cargando ? "library-loading" : ""} aria-busy={cargando}>{datos.contenidos.map(c => <FilaContenidoBiblioteca key={c.id} contenido={c} oracion={oracion} notify={notify}/>)}</div>;
 
-  if(!active){
-    const allResults=tabs.flatMap<{item:LibraryItem;tab:LibraryTab;prayer:string}>(tab=>tab==="Imágenes del widget"
-      ?widgetImages.map(item=>({item,tab,prayer:"Imágenes del widget"}))
-      :libraryGroups[tab].flatMap(group=>group.children?group.children.flatMap(child=>child.items.filter(item=>item.filled).map(item=>({item,tab,prayer:child.title}))):group.items.filter(item=>item.filled).map(item=>({item,tab,prayer:group.title}))))
-      .filter(result=>matches(result.item.name)||matches(result.prayer)||matches(result.tab));
-    return <><PageHead title="Biblioteca" subtitle="Todos los recursos espirituales en un solo lugar."/>
-      <div className="library-toolbar main-search"><div className="search"><Icon name="search" size={18}/><input placeholder="Buscar en toda la biblioteca…" value={search} onChange={e=>setSearch(e.target.value)}/></div>{search&&<span>{allResults.length} resultados</span>}</div>
-      {search?allResults.length?<Card className="global-results">{allResults.map((result,i)=><button key={`${result.tab}-${result.item.name}`} onClick={()=>onOpen(result.tab)}><span className={`file-icon f-${i%3}`}><Icon name={result.item.format==="Imagen"?"library":"book"}/></span><span><b>{result.item.name}</b><small>{result.tab} · {result.prayer}</small></span><FormatBadges item={result.item}/><Icon name="chevron" size={17}/></button>)}</Card>:<Card><Empty title="No encontramos contenidos" text="Prueba con otro nombre, tipo u oración."/></Card>
-      :<div className="library-type-grid">{tabs.map((tab,i)=><Card className="library-type-card" key={tab}><button onClick={()=>onOpen(tab)}><span className={`type-card-icon type-${i}`}><Icon name={libraryMeta[tab].icon} size={27}/></span><span className="type-card-title">{tab}</span><span className="type-card-description">{libraryMeta[tab].description}</span><span className="type-card-arrow"><Icon name="chevron" size={18}/></span></button></Card>)}</div>}
-    </>;
-  }
-
-  const imageItems=widgetImages.concat(added["Imágenes del widget"]||[]).map(item=>edited[`Imágenes del widget|${item.name}`]||item).filter(item=>matches(item.name)&&!removed.includes(`Imágenes del widget|${item.name}`));
-  return <><div className="library-breadcrumb"><button onClick={onBack}>Biblioteca</button><Icon name="chevron" size={14}/><span>{active}</span><Button variant="secondary" icon="arrow" onClick={onBack}>Volver</Button></div>
-    <PageHead title={active} subtitle={libraryMeta[active].description}/>
-    <div className="library-toolbar"><div className="search"><Icon name="search" size={18}/><input placeholder={`Buscar en ${active.toLowerCase()}…`} value={search} onChange={e=>setSearch(e.target.value)}/></div></div>
-    {active==="Imágenes del widget"?<><div className="widget-grid">{imageItems.map((item,i)=><Card key={`${item.name}-${i}`} className="widget-card"><div className={`widget-preview widget-${i%5}`}><span>SC</span></div><div className="widget-copy"><b>{item.name}</b><small>Actualizada {item.date}</small><div><Badge tone="neutral">Imagen</Badge><div className="row-actions"><Button variant="ghost" onClick={()=>openPanel("Imágenes del widget",imageItems,item)}>Editar</Button><Button variant="ghost" onClick={()=>confirm("Eliminar contenido","Esta imagen puede estar asignada a días futuros del calendario.",()=>removeItem("Imágenes del widget",item))}>Eliminar</Button></div></div></div></Card>)}</div><div className="widget-upload"><Button variant="secondary" icon="upload" onClick={()=>openPanel("Imágenes del widget",[])}>Subir nuevo</Button></div></>
-    :visibleGroups.length?<div className="library-groups">{visibleGroups.map(group=>{const isOpen=!!open[group.title];return <Card className="library-group" key={group.title}><button className="accordion-head simple" onClick={()=>setOpen({...open,[group.title]:!isOpen})}><span className="accordion-icon"><Icon name="book"/></span><span className="accordion-title"><b>{group.title}</b><small>{group.children?`${group.children.length} grupos de oración`:fixedLimits[group.title]?`Fija · ${fixedLimits[group.title]===1?"1 contenido":`${fixedLimits[group.title]} contenidos`} que se muestra${fixedLimits[group.title]===1?"":"n"} todos los días`:"Contenidos disponibles"}</small></span><span className={`accordion-chevron ${isOpen?"open":""}`}><Icon name="chevron"/></span></button>{isOpen&&<div className="accordion-body">{group.children?group.children.map(child=>{const items=existing(child.title,child.items);return <div className="library-subgroup" key={child.title}><div className="subgroup-head"><div><b>{child.title}</b><small>Contenidos disponibles</small></div></div>{items.length?items.map((item,i)=><LibraryContentRow key={`${item.name}-${i}`} item={item} index={i} confirm={confirm} onEdit={()=>openPanel(child.title,child.items,item)} onDelete={()=>removeItem(child.title,item)}/>):<div className="prayer-empty"><p>Aún no hay contenidos para esta oración</p></div>}<div className="accordion-upload"><Button variant="secondary" icon="upload" onClick={()=>openPanel(child.title,child.items)}>Subir nuevo</Button></div></div>}):<PrayerContents onRemove={item=>removeItem(group.title,item)} prayer={group.title} limit={fixedLimits[group.title]} items={existing(group.title,group.items)} onUpload={(item)=>openPanel(group.title,group.items,item)} confirm={confirm}/>}</div>}</Card>})}</div>:<Card><Empty title="No encontramos contenidos" text="Prueba con otro nombre dentro de esta categoría."/></Card>}
-    {panel&&<div className="drawer-backdrop" onMouseDown={()=>setPanel(null)}><div className="library-drawer" onMouseDown={e=>e.stopPropagation()}><div className="drawer-head"><div><small>{panelTitle}</small><div className="modal-title">{panel.item?"Editar contenido":"Subir nuevo"}</div></div><button className="icon-btn" onClick={()=>setPanel(null)}><Icon name="close"/></button></div><div className="drawer-body"><div className="drawer-context"><Icon name="book"/><div><b>{active}</b><span>{panel.prayer}</span></div></div>{active!=="Santifica el año"&&!panel.prayer.includes("Hora de María")&&<Input label="Nombre del contenido" value={name} onChange={setName}/>} {panel.prayer.includes("Hora de María")&&<Input label="Fecha del sábado *" type="date" value={saturday} onChange={value=>{setSaturday(value);setSaturdayError("");}} error={saturdayError}/>}{isWidget?<>{fileField("Imagen *","JPG o PNG · máximo 5 MB",imageFile,setImageFile,`${name||"imagen-widget"}.jpg`,"library")}{imageFile&&<div className="image-preview"><span>Vista previa</span><div><Icon name="library" size={30}/><b>{name||panel.prayer}</b></div></div>}</>:<div className="content-fields"><div className="content-fields-head"><b>Archivos del contenido</b><small className={hasContent?"":"required-note"}>{hasContent?"Puedes agregar uno, dos o los tres formatos.":"Agrega al menos un PDF, un video o una imagen"}</small></div>{fileField("PDF","PDF · máximo 10 MB",pdfFile,setPdfFile,`${name||panel.prayer}.pdf`,"book")}<div className="content-field"><Input label="Video de YouTube" placeholder="https://www.youtube.com/watch?v=…" value={youtube} onChange={setYoutube} error={youtubeError}/></div>{fileField("Imagen","JPG o PNG · máximo 5 MB",imageFile,setImageFile,`${name||panel.prayer}.jpg`,"library")}{imageFile&&<div className="image-preview"><span>Vista previa</span><div><Icon name="library" size={30}/><b>{name||panel.prayer}</b></div></div>}</div>}</div><div className="drawer-actions"><Button variant="secondary" onClick={()=>setPanel(null)}>Cancelar</Button><Button onClick={savePanel} disabled={!canSave}>Guardar</Button></div></div></div>}
+  return <>{lista}
+    {datos && <Paginacion pagina={pagina} totalPaginas={datos.totalPaginas} total={datos.total} mostrados={datos.contenidos.length} porPagina={CONTENIDOS_POR_PAGINA} cargando={cargando} onCambiar={setPagina}/>}
+    {lleno
+      ? <div className="accordion-limit">Esta oración admite {oracion.maxContenidos === 1 ? "un solo contenido" : `${oracion.maxContenidos} contenidos`}, que se {oracion.maxContenidos === 1 ? "muestra" : "muestran"} todos los días. Para cambiarl{oracion.maxContenidos === 1 ? "o" : "os"}, edita o elimina {oracion.maxContenidos === 1 ? "el actual" : "uno de los actuales"}.</div>
+      : <div className="accordion-upload"><Button variant="secondary" icon="upload" onClick={proximamente(notify, "Subir contenidos")}>Subir nuevo</Button></div>}
   </>;
 }
 
-function PrayerContents({items,onUpload,onRemove,confirm,limit}:{onRemove:(item:LibraryItem)=>void;prayer:string;items:LibraryItem[];onUpload:(item?:LibraryItem)=>void;confirm:(a:string,b:string,ok?:()=>void)=>void;limit?:number}) {
-  const full=limit!==undefined&&items.length>=limit;
-  return <>{items.length?items.map((item,i)=><LibraryContentRow key={`${item.name}-${i}`} item={item} index={i} confirm={confirm} onEdit={()=>onUpload(item)} onDelete={()=>onRemove(item)}/>):<div className="prayer-empty"><p>Aún no hay contenidos para esta oración</p></div>}{full?<div className="accordion-limit">Esta oración admite {limit===1?"un solo contenido":`${limit} contenidos`}, que se muestra{limit===1?"":"n"} todos los días. Para cambiarl{limit===1?"o":"os"}, edita o elimina {limit===1?"el actual":"uno de los actuales"}.</div>:<div className="accordion-upload"><Button variant="secondary" icon="upload" onClick={()=>onUpload()}>Subir nuevo</Button></div>}</>;
+function ImagenesWidget({ oracion, notify }: { oracion: OracionBiblioteca; notify: (s: string) => void }) {
+  const { pagina, setPagina, datos, cargando, errorCarga, reintentar } = usePaginaContenidos(oracion.id, IMAGENES_POR_PAGINA);
+
+  if (errorCarga) return <Card><Empty title="No pudimos cargar las imágenes" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={reintentar}>Reintentar</Button></div></Card>;
+  if (!datos) return <Card><Empty title="Cargando imágenes…" text="Un momento, por favor."/></Card>;
+
+  return <>
+    {datos.contenidos.length
+      ? <div className={`widget-grid ${cargando ? "library-loading" : ""}`} aria-busy={cargando}>{datos.contenidos.map(c => <Card key={c.id} className="widget-card"><VistaPrevia contenido={c} grande/><div className="widget-copy"><b>{c.nombre}</b><small>Actualizada {fechaActualizacion(c.actualizadoEn)}</small><div><Formatos formatos={c.formatos}/><div className="row-actions"><Button variant="ghost" onClick={proximamente(notify, "Editar contenidos")}>Editar</Button><Button variant="ghost" onClick={proximamente(notify, "Eliminar contenidos")}>Eliminar</Button></div></div></div></Card>)}</div>
+      : <Card><Empty title="Aún no hay imágenes del widget" text="Cuando subas imágenes para el widget, aparecerán aquí."/></Card>}
+    {datos.totalPaginas > 1 && <Card className="library-pagination-card"><Paginacion pagina={pagina} totalPaginas={datos.totalPaginas} total={datos.total} mostrados={datos.contenidos.length} porPagina={IMAGENES_POR_PAGINA} cargando={cargando} onCambiar={setPagina}/></Card>}
+    <div className="widget-upload"><Button variant="secondary" icon="upload" onClick={proximamente(notify, "Subir contenidos")}>Subir nuevo</Button></div>
+  </>;
+}
+
+function Library({ notify, active, onOpen, onBack }: { notify: (s: string) => void; active: LibraryTab | null; onOpen: (tab: LibraryTab) => void; onBack: () => void }) {
+  const [oraciones, setOraciones] = useState<OracionBiblioteca[] | null>(null);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [intento, setIntento] = useState(0);
+  const [abiertas, setAbiertas] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    let activo = true;
+    setErrorCarga("");
+    listarOracionesBiblioteca()
+      .then(resultado => { if (activo) setOraciones(resultado); })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); });
+    return () => { activo = false; };
+  }, [intento]);
+
+  useEffect(() => { setAbiertas({}); }, [active]);
+
+  const totalDeTipo = (tipo: LibraryTab) => (oraciones ?? []).filter(o => o.seccion === seccionDeTipo[tipo]).reduce((suma, o) => suma + o.totalContenidos, 0);
+  const estado = errorCarga
+    ? <Card><Empty title="No pudimos cargar la biblioteca" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={() => setIntento(n => n + 1)}>Reintentar</Button></div></Card>
+    : !oraciones ? <Card><Empty title="Cargando la biblioteca…" text="Un momento, por favor."/></Card> : null;
+
+  if (!active) {
+    return <><PageHead title="Biblioteca" subtitle="Todos los recursos espirituales en un solo lugar."/>
+      {estado ?? <div className="library-type-grid">{tiposBiblioteca.map((tipo, i) => <Card className="library-type-card" key={tipo}><button onClick={() => onOpen(tipo)}><span className={`type-card-icon type-${i}`}><Icon name={libraryMeta[tipo].icon} size={27}/></span><span className="type-card-title">{tipo}</span><span className="type-card-description">{libraryMeta[tipo].description}</span><span className="type-card-footer"><span><b>{totalDeTipo(tipo)}</b>{totalDeTipo(tipo) === 1 ? "contenido" : "contenidos"}</span><i><Icon name="chevron" size={18}/></i></span></button></Card>)}</div>}
+    </>;
+  }
+
+  const delTipo = ordenarOraciones((oraciones ?? []).filter(o => o.seccion === seccionDeTipo[active]));
+  const hayFijas = delTipo.some(o => o.esFija);
+
+  return <><div className="library-breadcrumb"><button onClick={onBack}>Biblioteca</button><Icon name="chevron" size={14}/><span>{active}</span><Button variant="secondary" icon="arrow" onClick={onBack}>Volver</Button></div>
+    <PageHead title={active} subtitle={libraryMeta[active].description}/>
+    {estado ?? (active === "Imágenes del widget"
+      ? delTipo[0] ? <ImagenesWidget oracion={delTipo[0]} notify={notify}/> : <Card><Empty title="Sin oración de widget" text="El catálogo no tiene la oración «Imagen del widget»."/></Card>
+      : <><div className="library-groups">{delTipo.map(oracion => {
+          const abierta = !!abiertas[oracion.id];
+          return <Card className="library-group" key={oracion.id}>
+            <button className="accordion-head simple" aria-expanded={abierta} onClick={() => setAbiertas({ ...abiertas, [oracion.id]: !abierta })}>
+              <span className="accordion-icon"><Icon name={oracion.clave === "hora-maria" ? "calendar" : "book"}/></span>
+              <span className="accordion-title"><b>{oracion.esFija && <span className="oracion-fija-punto" aria-label="Oración fija"/>}{tituloOracion(oracion)}</b><small>{detalleOracion(oracion)}</small></span>
+              <span className={`accordion-chevron ${abierta ? "open" : ""}`}><Icon name="chevron"/></span>
+            </button>
+            {abierta && <div className="accordion-body"><ContenidosOracion oracion={oracion} notify={notify}/></div>}
+          </Card>;
+        })}</div>
+        {hayFijas && <p className="oracion-fija-nota"><span className="oracion-fija-punto"/>Oración fija: se muestra todos los días y no se programa en el calendario.</p>}</>)}
+  </>;
 }
 
 function Calendar({ notify }: { notify: (s:string)=>void }) {
@@ -847,7 +920,7 @@ function Calendar({ notify }: { notify: (s:string)=>void }) {
         <div className="card-head"><div><div className="eyebrow">{capital(months[selDate.getMonth()])} {selDate.getFullYear()}</div><div className="card-title">{labels[selected].toLowerCase()}, {selDate.getDate()} de {months[selDate.getMonth()]}</div></div><Badge tone={tone(status(selected))}>{status(selected)}</Badge></div>
         <div className="calendar-tabs">{tabs.map(t=><button key={t.id} className={activeTab===t.id?"active":""} onClick={()=>setTab(t.id)}>{t.label}</button>)}</div>
         {published(selected)?<div className="locked-note"><Icon name="check"/><div><b>Este día ya se publicó</b><p>Puedes consultar su contenido, pero ya no es posible modificarlo.</p></div></div>:<div className="assignment-list">
-          {activeTab==="hora"&&<>{dayRows.map((row,i)=><Row key={row.name} index={i+1} title={row.name} items={row.items} placeholder="Seleccionar desde la biblioteca…"/>)}<Row index={6} title="Imagen del widget" items={widgetImages.map(item=>item.name)} placeholder="Seleccionar desde la biblioteca…"/>{Object.keys(fixedLimits).map(name=><div className="fixed-row" key={name}><span><i/><b>{name}</b></span><span>{options(libraryGroups["Santifica el día"].find(g=>g.title===name)?.items||[]).join(" y ")||"Sin contenido en la biblioteca"}</span></div>)}<p className="fixed-note"><i/>Oración fija: para modificar su contenido, dirigirse a la Biblioteca.</p></>}
+          {activeTab==="hora"&&<>{dayRows.map((row,i)=><Row key={row.name} index={i+1} title={row.name} items={row.items} placeholder="Seleccionar desde la biblioteca…"/>)}<Row index={6} title="Imagen del widget" items={widgetImages.map(item=>item.name)} placeholder="Seleccionar desde la biblioteca…"/>{Object.keys(fixedLimits).map(name=><div className="fixed-row" key={name}><span><i/><b>{name}</b></span><span>{options(libraryGroups["Santifica el día"].find(g=>g.title===name)?.items||[]).join(" y ")||"Sin contenido en la biblioteca"}</span></div>)}<p className="fixed-note"><i/>Oración fija: se muestra todos los días y no se programa en el calendario.</p></>}
           {activeTab==="semana"&&<><p className="tab-note">Oficio de este día: <b>{weekGroup.title.split(" · ")[1]}</b>. Solo aparecen las variantes subidas a la biblioteca.</p><Row key={weekGroup.title} index={1} title={weekGroup.title.split(" · ")[1]} items={options(weekGroup.items)} placeholder="Seleccionar variante…"/></>}
           {activeTab==="mes"&&<><p className="tab-note">Asigna un oficio solo si este día es el primer {weekday==="JUE"?"jueves":weekday==="VIE"?"viernes":"sábado"} del mes. Si no lo es, déjalo vacío.</p>{monthGroups.map((group,i)=><Row key={group.title} index={i+1} title={group.title} items={options(group.items)} placeholder="Sin asignar"/>)}</>}
           {activeTab==="ano"&&<><p className="tab-note">Selecciona las consagraciones que corresponden a este día. Puedes dejarlas todas sin seleccionar.</p>{libraryGroups["Santifica el año"].map(group=>{const on=!!chosen[group.title];return <div className="consecration-row" key={group.title}><label className="check"><input type="checkbox" checked={on} onChange={()=>setChosen({...chosen,[group.title]:!on})}/><b>{group.title}</b></label>{on&&<select defaultValue=""><option value="">Seleccionar día…</option>{options(group.items).map(item=><option key={item}>{item}</option>)}</select>}</div>})}</>}
@@ -1041,7 +1114,7 @@ function PortalApp() {
     if(section==="Resumen") return <Summary/>;
     if(section==="Publicaciones") return admin ? <Publications admin={admin} notify={notify}/> : null;
     if(section==="Oración en vivo") return admin ? <LivePrayer admin={admin} notify={notify}/> : null;
-    if(section==="Biblioteca") return <Library confirm={confirm} notify={notify} active={libraryType} onOpen={tab=>navigate(`/biblioteca/${libraryMeta[tab].slug}`)} onBack={()=>navigate("/biblioteca")}/>;
+    if(section==="Biblioteca") return <Library notify={notify} active={libraryType} onOpen={tab=>navigate(`/biblioteca/${libraryMeta[tab].slug}`)} onBack={()=>navigate("/biblioteca")}/>;
     if(section==="Calendario") return <Calendar notify={notify}/>;
     if(section==="Usuarios") return <Users confirm={confirm} notify={notify}/>;
     if(section==="Donaciones") return <Donations/>;
