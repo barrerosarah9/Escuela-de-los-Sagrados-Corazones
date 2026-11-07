@@ -11,10 +11,13 @@ const PATRON_YOUTUBE =
 
 export const CONTENIDOS_POR_PAGINA = 10;
 export const IMAGENES_POR_PAGINA = 12;
+export const RESULTADOS_POR_PAGINA = 10;
+export const LARGO_MAXIMO_BUSQUEDA = 80;
 
 export const MENSAJES_BIBLIOTECA = {
   carga: 'No pudimos cargar la biblioteca. Inténtalo de nuevo.',
   cargaContenidos: 'No pudimos cargar los contenidos de esta oración. Inténtalo de nuevo.',
+  busqueda: 'No pudimos buscar en la biblioteca. Inténtalo de nuevo.',
   sinPermisos: 'Tu cuenta no tiene permisos para ver la biblioteca. Vuelve a iniciar sesión.',
   sinConexion: 'No hay conexión a internet. Revisa tu red e inténtalo de nuevo.',
 };
@@ -54,6 +57,23 @@ export type PaginaContenidos = {
   contenidos: ContenidoBiblioteca[];
 };
 
+export type ResultadoBusqueda = ContenidoBiblioteca & {
+  oracionId: number;
+  seccion: SeccionBiblioteca;
+};
+
+export type PaginaResultados = {
+  pagina: number;
+  totalPaginas: number;
+  total: number;
+  resultados: ResultadoBusqueda[];
+};
+
+export type FiltrosBusqueda = {
+  texto: string;
+  seccion: SeccionBiblioteca | null;
+};
+
 type FilaOracion = {
   id: number;
   clave: string;
@@ -68,6 +88,8 @@ type FilaOracion = {
 
 type FilaContenido = {
   id: number;
+  oracion_id?: number;
+  seccion?: SeccionBiblioteca;
   nombre: string;
   numero: number | null;
   fecha: string | null;
@@ -121,6 +143,36 @@ async function urlsFirmadas(rutas: string[]) {
     }
   }
   return urls;
+}
+
+function contenidoDe(fila: FilaContenido, urls: Map<string, string>): ContenidoBiblioteca {
+  return {
+    id: fila.id,
+    nombre: fila.nombre,
+    numero: fila.numero,
+    fecha: fila.fecha,
+    formatos: formatosDe(fila),
+    youtubeUrl: fila.youtube_url,
+    youtubeMiniatura: fila.youtube_url ? miniaturaDeYouTube(fila.youtube_url) : null,
+    pdfUrl: fila.pdf_path ? urls.get(fila.pdf_path) ?? null : null,
+    imagenUrl: fila.imagen_path ? urls.get(fila.imagen_path) ?? null : null,
+    actualizadoEn: fila.actualizado_en,
+  };
+}
+
+async function urlsDeFilas(filas: FilaContenido[]) {
+  const rutas = filas.flatMap(fila =>
+    [fila.pdf_path, fila.imagen_path].filter((ruta): ruta is string => !!ruta),
+  );
+  return urlsFirmadas(rutas).catch(() => new Map<string, string>());
+}
+
+export function normalizarBusqueda(texto: string) {
+  return texto.replace(/\s+/g, ' ').trim().slice(0, LARGO_MAXIMO_BUSQUEDA);
+}
+
+function patronDeBusqueda(texto: string) {
+  return `%${texto.replace(/[\\%_]/g, caracter => `\\${caracter}`)}%`;
 }
 
 function formatosDe(fila: FilaContenido): FormatoContenido[] {
@@ -184,27 +236,67 @@ export async function listarContenidos(
     }
 
     const filas = (data ?? []) as FilaContenido[];
-    const rutas = filas.flatMap(fila =>
-      [fila.pdf_path, fila.imagen_path].filter((ruta): ruta is string => !!ruta),
-    );
-    const urls = await urlsFirmadas(rutas).catch(() => new Map<string, string>());
+    const urls = await urlsDeFilas(filas);
     const total = count ?? filas.length;
 
     return {
       pagina: paginaPedida,
       totalPaginas: Math.max(1, Math.ceil(total / porPagina)),
       total,
-      contenidos: filas.map(fila => ({
-        id: fila.id,
-        nombre: fila.nombre,
-        numero: fila.numero,
-        fecha: fila.fecha,
-        formatos: formatosDe(fila),
-        youtubeUrl: fila.youtube_url,
-        youtubeMiniatura: fila.youtube_url ? miniaturaDeYouTube(fila.youtube_url) : null,
-        pdfUrl: fila.pdf_path ? urls.get(fila.pdf_path) ?? null : null,
-        imagenUrl: fila.imagen_path ? urls.get(fila.imagen_path) ?? null : null,
-        actualizadoEn: fila.actualizado_en,
+      contenidos: filas.map(fila => contenidoDe(fila, urls)),
+    };
+  } catch (error) {
+    relanzar(error);
+  }
+}
+
+export async function buscarContenidos(
+  filtros: FiltrosBusqueda,
+  pagina = 1,
+  porPagina = RESULTADOS_POR_PAGINA,
+): Promise<PaginaResultados> {
+  try {
+    const texto = normalizarBusqueda(filtros.texto);
+    const paginaPedida = Math.max(1, Math.floor(pagina));
+    const desde = (paginaPedida - 1) * porPagina;
+    let consulta = supabase
+      .from('contenidos')
+      .select(`oracion_id, seccion, ${COLUMNAS_CONTENIDO}`, { count: 'exact' });
+
+    if (texto) {
+      consulta = consulta.ilike('nombre', patronDeBusqueda(texto));
+    }
+    if (filtros.seccion) {
+      consulta = consulta.eq('seccion', filtros.seccion);
+    }
+
+    const { data, error, count } = await consulta
+      .order('seccion', { ascending: true })
+      .order('oracion_id', { ascending: true })
+      .order('fecha', { ascending: false, nullsFirst: false })
+      .order('numero', { ascending: true, nullsFirst: false })
+      .order('creado_en', { ascending: true })
+      .range(desde, desde + porPagina - 1);
+
+    if (error) {
+      if (error.code === 'PGRST103' && paginaPedida > 1) {
+        return buscarContenidos(filtros, 1, porPagina);
+      }
+      throw errorDeConsulta(error.code, error.message, MENSAJES_BIBLIOTECA.busqueda);
+    }
+
+    const filas = (data ?? []) as FilaContenido[];
+    const urls = await urlsDeFilas(filas);
+    const total = count ?? filas.length;
+
+    return {
+      pagina: paginaPedida,
+      totalPaginas: Math.max(1, Math.ceil(total / porPagina)),
+      total,
+      resultados: filas.map(fila => ({
+        ...contenidoDe(fila, urls),
+        oracionId: fila.oracion_id ?? 0,
+        seccion: fila.seccion ?? 'dia',
       })),
     };
   } catch (error) {
