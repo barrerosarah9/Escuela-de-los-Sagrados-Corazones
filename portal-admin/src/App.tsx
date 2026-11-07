@@ -6,7 +6,7 @@ import { listarAsistentes, type Asistente } from "./lib/asistencias";
 import { eliminarComentario, listarComentarios, type Comentario } from "./lib/comentarios";
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { buscarContenidos, CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, LARGO_MAXIMO_BUSQUEDA, listarContenidos, listarOracionesBiblioteca, normalizarBusqueda, RESULTADOS_POR_PAGINA, type ContenidoBiblioteca, type FiltrosBusqueda, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type PaginaResultados, type SeccionBiblioteca } from "./lib/biblioteca";
-import { campoVariante, ErrorContenido, esWidget, FORMATO_PDF, FORMATOS_IMAGEN, guardarContenido, LARGO_MAXIMO_NOMBRE, nombreSugerido, oracionLlena, siguienteNumero, tieneErrores as tieneErroresContenido, validarArchivo, validarContenido, type ErroresContenido } from "./lib/contenidos";
+import { actualizarContenido, campoVariante, diasAsignados, eliminarContenido, ErrorContenido, esWidget, FORMATO_PDF, FORMATOS_IMAGEN, guardarContenido, LARGO_MAXIMO_NOMBRE, nombreSugerido, oracionLlena, siguienteNumero, tieneErrores as tieneErroresContenido, validarArchivo, validarContenido, validarEdicion, type ErroresContenido } from "./lib/contenidos";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -703,7 +703,7 @@ const textoContenidos = (n: number) => `${n} ${n === 1 ? "contenido" : "contenid
 const fechaActualizacion = (iso: string) => new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
 const fechaSabado = (fecha: string) => { const [anio, mes, dia] = partesDeFecha(fecha); return `Sábado ${dia} de ${monthNames[mes - 1]} de ${anio}`; };
 const ordenarOraciones = (oraciones: OracionBiblioteca[]) => [...oraciones].sort((a, b) => Number(a.esFija) - Number(b.esFija) || a.orden - b.orden);
-const proximamente = (notify: (s: string) => void, accion: string) => () => notify(`${accion} estará disponible pronto`);
+type AccionesContenido = { onEditar: (contenido: ContenidoBiblioteca, oracion: OracionBiblioteca) => void; onEliminar: (contenido: ContenidoBiblioteca, oracion: OracionBiblioteca) => void };
 
 function tituloOracion(oracion: OracionBiblioteca) {
   if (oracion.seccion === "semana" && oracion.diaSemana) return `${nombresDia[oracion.diaSemana - 1]} · ${oracion.nombre}`;
@@ -778,13 +778,13 @@ function usePaginaContenidos(oracionId: number, porPagina: number) {
   return { pagina, setPagina, datos, cargando, errorCarga, reintentar: () => setIntento(n => n + 1) };
 }
 
-function FilaContenidoBiblioteca({ contenido, oracion, notify, contexto }: { contenido: ContenidoBiblioteca; oracion: OracionBiblioteca; notify: (s: string) => void; contexto?: string }) {
+function FilaContenidoBiblioteca({ contenido, oracion, acciones, contexto }: { contenido: ContenidoBiblioteca; oracion: OracionBiblioteca; acciones: AccionesContenido; contexto?: string }) {
   const detalle = [contexto, detalleContenido(contenido, oracion)].filter(Boolean).join(" · ");
   return <div className="library-row">
     <div className="resource-name"><VistaPrevia contenido={contenido}/><div><b>{contenido.nombre}</b>{detalle && <small>{detalle}</small>}</div></div>
     <div><Formatos formatos={contenido.formatos}/></div>
     <span className="library-date">Actualizado {fechaActualizacion(contenido.actualizadoEn)}</span>
-    <div className="row-actions"><Button variant="ghost" onClick={proximamente(notify, "Editar contenidos")}>Editar</Button><Button variant="ghost" onClick={proximamente(notify, "Eliminar contenidos")}>Eliminar</Button></div>
+    <div className="row-actions"><Button variant="ghost" onClick={() => acciones.onEditar(contenido, oracion)}>Editar</Button><Button variant="ghost" onClick={() => acciones.onEliminar(contenido, oracion)}>Eliminar</Button></div>
   </div>;
 }
 
@@ -837,7 +837,7 @@ function useResultadosBusqueda(filtros: FiltrosBusqueda, activa: boolean) {
   return { pagina, setPagina, datos, cargando, errorCarga, reintentar: () => setIntento(n => n + 1) };
 }
 
-function ResultadosBusqueda({ busqueda, oraciones, notify, onLimpiar, mostrarTipo }: { busqueda: ReturnType<typeof useResultadosBusqueda>; oraciones: OracionBiblioteca[]; notify: (s: string) => void; onLimpiar: () => void; mostrarTipo: boolean }) {
+function ResultadosBusqueda({ busqueda, oraciones, acciones, onLimpiar, mostrarTipo }: { busqueda: ReturnType<typeof useResultadosBusqueda>; oraciones: OracionBiblioteca[]; acciones: AccionesContenido; onLimpiar: () => void; mostrarTipo: boolean }) {
   const { pagina, setPagina, datos, cargando, errorCarga, reintentar } = busqueda;
   const porId = useMemo(() => new Map(oraciones.map(o => [o.id, o])), [oraciones]);
 
@@ -850,13 +850,13 @@ function ResultadosBusqueda({ busqueda, oraciones, notify, onLimpiar, mostrarTip
       const oracion = porId.get(r.oracionId);
       if (!oracion) return null;
       const contexto = !mostrarTipo ? oracion.nombre : r.seccion === "widget" ? tipoDeSeccion[r.seccion] : `${tipoDeSeccion[r.seccion]} · ${oracion.nombre}`;
-      return <FilaContenidoBiblioteca key={r.id} contenido={r} oracion={oracion} notify={notify} contexto={contexto}/>;
+      return <FilaContenidoBiblioteca key={r.id} contenido={r} oracion={oracion} acciones={acciones} contexto={contexto}/>;
     })}</div>
     <Paginacion pagina={pagina} totalPaginas={datos.totalPaginas} total={datos.total} mostrados={datos.resultados.length} porPagina={RESULTADOS_POR_PAGINA} cargando={cargando} onCambiar={setPagina}/>
   </Card>;
 }
 
-function ContenidosOracion({ oracion, notify, onSubir }: { oracion: OracionBiblioteca; notify: (s: string) => void; onSubir: () => void }) {
+function ContenidosOracion({ oracion, acciones, onSubir }: { oracion: OracionBiblioteca; acciones: AccionesContenido; onSubir: () => void }) {
   const { pagina, setPagina, datos, cargando, errorCarga, reintentar } = usePaginaContenidos(oracion.id, CONTENIDOS_POR_PAGINA);
   const lleno = oracion.maxContenidos !== null && (datos?.total ?? oracion.totalContenidos) >= oracion.maxContenidos;
 
@@ -864,7 +864,7 @@ function ContenidosOracion({ oracion, notify, onSubir }: { oracion: OracionBibli
   if (errorCarga) lista = <div className="prayer-empty"><p>{errorCarga}</p><Button variant="secondary" onClick={reintentar}>Reintentar</Button></div>;
   else if (!datos) lista = <div className="prayer-empty"><p>Cargando contenidos…</p></div>;
   else if (!datos.contenidos.length) lista = <div className="prayer-empty"><p>Aún no hay contenidos para esta oración</p></div>;
-  else lista = <div className={cargando ? "library-loading" : ""} aria-busy={cargando}>{datos.contenidos.map(c => <FilaContenidoBiblioteca key={c.id} contenido={c} oracion={oracion} notify={notify}/>)}</div>;
+  else lista = <div className={cargando ? "library-loading" : ""} aria-busy={cargando}>{datos.contenidos.map(c => <FilaContenidoBiblioteca key={c.id} contenido={c} oracion={oracion} acciones={acciones}/>)}</div>;
 
   return <>{lista}
     {datos && <Paginacion pagina={pagina} totalPaginas={datos.totalPaginas} total={datos.total} mostrados={datos.contenidos.length} porPagina={CONTENIDOS_POR_PAGINA} cargando={cargando} onCambiar={setPagina}/>}
@@ -874,7 +874,7 @@ function ContenidosOracion({ oracion, notify, onSubir }: { oracion: OracionBibli
   </>;
 }
 
-function ImagenesWidget({ oracion, notify, onSubir }: { oracion: OracionBiblioteca; notify: (s: string) => void; onSubir: () => void }) {
+function ImagenesWidget({ oracion, acciones, onSubir }: { oracion: OracionBiblioteca; acciones: AccionesContenido; onSubir: () => void }) {
   const { pagina, setPagina, datos, cargando, errorCarga, reintentar } = usePaginaContenidos(oracion.id, IMAGENES_POR_PAGINA);
 
   if (errorCarga) return <Card><Empty title="No pudimos cargar las imágenes" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={reintentar}>Reintentar</Button></div></Card>;
@@ -882,7 +882,7 @@ function ImagenesWidget({ oracion, notify, onSubir }: { oracion: OracionBibliote
 
   return <>
     {datos.contenidos.length
-      ? <div className={`widget-grid ${cargando ? "library-loading" : ""}`} aria-busy={cargando}>{datos.contenidos.map(c => <Card key={c.id} className="widget-card"><VistaPrevia contenido={c} grande/><div className="widget-copy"><b>{c.nombre}</b><small>Actualizada {fechaActualizacion(c.actualizadoEn)}</small><div><Formatos formatos={c.formatos}/><div className="row-actions"><Button variant="ghost" onClick={proximamente(notify, "Editar contenidos")}>Editar</Button><Button variant="ghost" onClick={proximamente(notify, "Eliminar contenidos")}>Eliminar</Button></div></div></div></Card>)}</div>
+      ? <div className={`widget-grid ${cargando ? "library-loading" : ""}`} aria-busy={cargando}>{datos.contenidos.map(c => <Card key={c.id} className="widget-card"><VistaPrevia contenido={c} grande/><div className="widget-copy"><b>{c.nombre}</b><small>Actualizada {fechaActualizacion(c.actualizadoEn)}</small><div><Formatos formatos={c.formatos}/><div className="row-actions"><Button variant="ghost" onClick={() => acciones.onEditar(c, oracion)}>Editar</Button><Button variant="ghost" onClick={() => acciones.onEliminar(c, oracion)}>Eliminar</Button></div></div></div></Card>)}</div>
       : <Card><Empty title="Aún no hay imágenes del widget" text="Cuando subas imágenes para el widget, aparecerán aquí."/></Card>}
     {datos.totalPaginas > 1 && <Card className="library-pagination-card"><Paginacion pagina={pagina} totalPaginas={datos.totalPaginas} total={datos.total} mostrados={datos.contenidos.length} porPagina={IMAGENES_POR_PAGINA} cargando={cargando} onCambiar={setPagina}/></Card>}
     <div className="widget-upload"><Button variant="secondary" icon="upload" onClick={onSubir}>Subir nuevo</Button></div>
@@ -1015,6 +1015,101 @@ function FormularioContenido({ oraciones, oracionInicial, seccion, admin, onCerr
   </div>;
 }
 
+function EditarContenido({ contenido, oracionOriginal, oraciones, onCerrar, onGuardado }: { contenido: ContenidoBiblioteca; oracionOriginal: OracionBiblioteca; oraciones: OracionBiblioteca[]; onCerrar: () => void; onGuardado: (oracion: OracionBiblioteca) => void }) {
+  const numeroOriginal = contenido.numero ? String(contenido.numero) : "";
+  const fechaOriginal = contenido.fecha ?? "";
+  const [oracionId, setOracionId] = useState<number | null>(oracionOriginal.id);
+  const [numero, setNumero] = useState(numeroOriginal);
+  const [fecha, setFecha] = useState(fechaOriginal);
+  const [nombre, setNombre] = useState(contenido.nombre);
+  const [nombreEditado, setNombreEditado] = useState(contenido.nombre !== nombreSugerido(oracionOriginal, numeroOriginal, fechaOriginal));
+  const [intentado, setIntentado] = useState(false);
+  const [errorServidor, setErrorServidor] = useState<{ campo: keyof ErroresContenido | null; mensaje: string } | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const primeraVez = useRef(true);
+  const oracion = oraciones.find(o => o.id === oracionId);
+  const campo = campoVariante(oracion);
+  const soloImagen = !contenido.pdfPath && !contenido.youtubeUrl;
+  const datos = { oracionId, nombre, numero, fecha };
+  const validacion = validarEdicion(datos, oracion, contenido, oracionOriginal.id);
+  const errores: ErroresContenido = intentado ? { ...validacion } : {};
+  if (validacion.oracion && oracionId !== oracionOriginal.id) errores.oracion = validacion.oracion;
+  if (errorServidor?.campo) errores[errorServidor.campo] = errorServidor.mensaje;
+  const sinCambios = oracionId === oracionOriginal.id && nombre.trim() === contenido.nombre && numero === numeroOriginal && fecha === fechaOriginal;
+
+  useEffect(() => {
+    if (primeraVez.current) { primeraVez.current = false; return; }
+    let vigente = true;
+    const actual = oraciones.find(o => o.id === oracionId);
+    const tipoCampo = campoVariante(actual);
+    if (actual?.id === oracionOriginal.id) { setNumero(numeroOriginal); setFecha(fechaOriginal); return; }
+    setNumero("");
+    setFecha("");
+    if (actual && (tipoCampo === "numero" || tipoCampo === "diaConsagracion")) {
+      siguienteNumero(actual.id).then(siguiente => {
+        if (vigente) setNumero(String(tipoCampo === "diaConsagracion" ? Math.min(siguiente, 30) : siguiente));
+      });
+    }
+    return () => { vigente = false; };
+  }, [oracionId, oraciones, oracionOriginal.id, numeroOriginal, fechaOriginal]);
+
+  useEffect(() => {
+    if (!nombreEditado) setNombre(nombreSugerido(oraciones.find(o => o.id === oracionId), numero, fecha) || contenido.nombre);
+  }, [oracionId, numero, fecha, nombreEditado, oraciones, contenido.nombre]);
+
+  useEffect(() => { setErrorServidor(null); }, [oracionId, nombre, numero, fecha]);
+
+  useEffect(() => {
+    const alPresionar = (e: KeyboardEvent) => { if (e.key === "Escape" && !guardando) onCerrar(); };
+    document.addEventListener("keydown", alPresionar);
+    return () => document.removeEventListener("keydown", alPresionar);
+  }, [guardando, onCerrar]);
+
+  const guardar = async (e: FormEvent) => {
+    e.preventDefault();
+    setIntentado(true);
+    if (!oracion || tieneErroresContenido(validacion) || sinCambios) return;
+    setGuardando(true);
+    setErrorServidor(null);
+    try {
+      await actualizarContenido(contenido, oracionOriginal, datos, oracion);
+      onGuardado(oracion);
+    } catch (error) {
+      const mensaje = error instanceof ErrorContenido ? error.message : "No pudimos guardar los cambios.";
+      setErrorServidor({ campo: error instanceof ErrorContenido ? error.campo : null, mensaje });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const disponible = (o: OracionBiblioteca) => o.id === oracionOriginal.id || (!oracionLlena(o) && (o.seccion !== "widget" || soloImagen));
+  const motivo = (o: OracionBiblioteca) => o.id === oracionOriginal.id ? " (actual)" : oracionLlena(o) ? " (completa)" : o.seccion === "widget" && !soloImagen ? " (solo imagen)" : "";
+  const etiquetaVariante = campo === "diaConsagracion" ? "Día de la consagración *" : "Número de variante *";
+  return <div className="drawer-backdrop" onMouseDown={() => { if (!guardando) onCerrar(); }}>
+    <form className="library-drawer" onMouseDown={e => e.stopPropagation()} onSubmit={guardar} noValidate aria-labelledby="titulo-editar-contenido">
+      <div className="drawer-head"><div><small>{oracion ? `${tipoDeSeccion[oracion.seccion]} · ${tituloOracion(oracion)}` : "Biblioteca"}</small><div className="modal-title" id="titulo-editar-contenido">Editar contenido</div></div><button type="button" className="icon-btn" aria-label="Cerrar" disabled={guardando} onClick={onCerrar}><Icon name="close"/></button></div>
+      <div className="drawer-body">
+        <label className="field"><span>Tipo de oración *</span>
+          <select value={oracionId ?? ""} onChange={e => setOracionId(e.target.value ? Number(e.target.value) : null)}>
+            {tiposBiblioteca.map(tipo => <optgroup key={tipo} label={tipo}>{ordenarOraciones(oraciones.filter(o => o.seccion === seccionDeTipo[tipo])).map(o => <option key={o.id} value={o.id} disabled={!disponible(o)}>{tituloOracion(o)}{motivo(o)}</option>)}</optgroup>)}
+          </select>
+          {errores.oracion && <small role="alert">{errores.oracion}</small>}
+          {oracionId !== oracionOriginal.id && !errores.oracion && <small className="field-note">Los archivos se moverán a la carpeta del nuevo tipo.</small>}
+        </label>
+        {(campo === "numero" || campo === "diaConsagracion") && <Input label={etiquetaVariante} type="number" value={numero} onChange={setNumero} error={errores.numero}/>}
+        {campo === "fecha" && <Input label="Fecha del sábado *" type="date" value={fecha} onChange={setFecha} error={errores.fecha}/>}
+        <Input label="Nombre del contenido *" value={nombre} onChange={valor => { setNombre(valor.slice(0, LARGO_MAXIMO_NOMBRE + 1)); setNombreEditado(true); }} error={errores.nombre}/>
+        <div className="content-fields">
+          <div className="content-fields-head"><b>Archivos del contenido</b><small>Para cambiar los archivos, elimina este contenido y súbelo de nuevo.</small></div>
+          <div className="contenido-archivos"><VistaPrevia contenido={contenido} grande/><Formatos formatos={contenido.formatos}/></div>
+        </div>
+        {errorServidor && !errorServidor.campo && <div className="form-error" role="alert">{errorServidor.mensaje}</div>}
+      </div>
+      <div className="drawer-actions"><Button variant="secondary" disabled={guardando} onClick={onCerrar}>Cancelar</Button><Button type="submit" disabled={guardando || sinCambios}>{guardando ? "Guardando…" : "Guardar cambios"}</Button></div>
+    </form>
+  </div>;
+}
+
 function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrador; notify: (s: string) => void; active: LibraryTab | null; onOpen: (tab: LibraryTab) => void; onBack: () => void }) {
   const [oraciones, setOraciones] = useState<OracionBiblioteca[] | null>(null);
   const [errorCarga, setErrorCarga] = useState("");
@@ -1023,6 +1118,8 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
   const [texto, setTexto] = useState("");
   const [filtroSeccion, setFiltroSeccion] = useState<SeccionBiblioteca | null>(null);
   const [formulario, setFormulario] = useState<{ oracionId: number | null } | null>(null);
+  const [edicion, setEdicion] = useState<{ contenido: ContenidoBiblioteca; oracion: OracionBiblioteca } | null>(null);
+  const [eliminacion, setEliminacion] = useState<{ contenido: ContenidoBiblioteca; oracion: OracionBiblioteca; dias: string[] | null; error: string } | null>(null);
   const [version, setVersion] = useState(0);
   const abrirAlEntrar = useRef<number | null>(null);
   const textoDiferido = useValorDiferido(normalizarBusqueda(texto), ESPERA_BUSQUEDA_MS);
@@ -1049,10 +1146,34 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
   }, [active]);
 
   const subir = (oracionId: number | null) => setFormulario({ oracionId });
+  const refrescar = () => { setVersion(v => v + 1); busqueda.reintentar(); };
+  const alActualizar = (oracion: OracionBiblioteca) => {
+    setEdicion(null);
+    refrescar();
+    notify("Contenido actualizado");
+    const tipo = tipoDeSeccion[oracion.seccion];
+    if (tipo === active) setAbiertas(actuales => ({ ...actuales, [oracion.id]: true }));
+    else if (!buscando && active) { abrirAlEntrar.current = oracion.id; onOpen(tipo); }
+  };
+  const pedirEliminar = (contenido: ContenidoBiblioteca, oracion: OracionBiblioteca) => {
+    setEliminacion({ contenido, oracion, dias: null, error: "" });
+    diasAsignados(contenido.id)
+      .then(dias => setEliminacion(actual => actual?.contenido.id === contenido.id ? { ...actual, dias } : actual))
+      .catch((e: Error) => setEliminacion(actual => actual?.contenido.id === contenido.id ? { ...actual, dias: [], error: e.message } : actual));
+  };
+  const eliminar = async (contenido: ContenidoBiblioteca) => {
+    try {
+      const { archivosBorrados } = await eliminarContenido(contenido);
+      refrescar();
+      notify(archivosBorrados ? "Contenido eliminado" : "Contenido eliminado, pero uno de sus archivos no se pudo borrar de Storage");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : "No pudimos eliminar el contenido.");
+    }
+  };
+  const acciones: AccionesContenido = { onEditar: (contenido, oracion) => setEdicion({ contenido, oracion }), onEliminar: pedirEliminar };
   const alGuardar = (oracion: OracionBiblioteca) => {
     setFormulario(null);
-    setVersion(v => v + 1);
-    busqueda.reintentar();
+    refrescar();
     notify("Contenido agregado a la biblioteca");
     const tipo = tipoDeSeccion[oracion.seccion];
     if (tipo === active) setAbiertas(actuales => ({ ...actuales, [oracion.id]: true }));
@@ -1060,14 +1181,25 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
   };
   const disponiblesDelTipo = active ? (oraciones ?? []).filter(o => o.seccion === seccionDeTipo[active] && !oracionLlena(o)) : [];
   const botonSubir = <Button icon="upload" onClick={() => subir(disponiblesDelTipo.length === 1 ? disponiblesDelTipo[0].id : null)} disabled={!oraciones}>Subir contenido</Button>;
-  const panel = formulario && oraciones ? <FormularioContenido oraciones={oraciones} oracionInicial={formulario.oracionId} seccion={active ? seccionDeTipo[active] : null} admin={admin} onCerrar={() => setFormulario(null)} onGuardado={alGuardar}/> : null;
+  const diasTexto = (dias: string[]) => dias.length <= 5 ? dias.map(fechaLarga).join(", ") : `${dias.slice(0, 5).map(fechaLarga).join(", ")} y ${dias.length - 5} más`;
+  const modalEliminar = eliminacion && <Modal title="Eliminar contenido" danger action={eliminacion.dias === null ? "Revisando…" : "Eliminar"} onClose={() => setEliminacion(null)} onConfirm={() => { if (eliminacion.dias === null) return false; void eliminar(eliminacion.contenido); }}>
+    <p className="modal-text">Se eliminará «{eliminacion.contenido.nombre}» de {tituloOracion(eliminacion.oracion)} junto con sus archivos. Esta acción no se puede deshacer.</p>
+    {eliminacion.dias === null && <p className="modal-text">Revisando el calendario…</p>}
+    {eliminacion.error && <div className="form-error" role="alert">{eliminacion.error} Si lo eliminas, los días donde esté asignado quedarán incompletos.</div>}
+    {eliminacion.dias && eliminacion.dias.length > 0 && <div className="aviso-asignado" role="alert"><b>Está asignado a {eliminacion.dias.length === 1 ? "1 día" : `${eliminacion.dias.length} días`} desde hoy en el calendario:</b><span>{diasTexto(eliminacion.dias)}.</span><span>Si lo eliminas, esos días quedarán incompletos.</span></div>}
+  </Modal>;
+  const panel = <>
+    {formulario && oraciones && <FormularioContenido oraciones={oraciones} oracionInicial={formulario.oracionId} seccion={active ? seccionDeTipo[active] : null} admin={admin} onCerrar={() => setFormulario(null)} onGuardado={alGuardar}/>}
+    {edicion && oraciones && <EditarContenido contenido={edicion.contenido} oracionOriginal={oraciones.find(o => o.id === edicion.oracion.id) ?? edicion.oracion} oraciones={oraciones} onCerrar={() => setEdicion(null)} onGuardado={alActualizar}/>}
+    {modalEliminar}
+  </>;
 
   const limpiar = () => { setTexto(""); if (!active) setFiltroSeccion(null); };
   const totalDeTipo = (tipo: LibraryTab) => (oraciones ?? []).filter(o => o.seccion === seccionDeTipo[tipo]).reduce((suma, o) => suma + o.totalContenidos, 0);
   const estado = errorCarga
     ? <Card><Empty title="No pudimos cargar la biblioteca" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={() => setIntento(n => n + 1)}>Reintentar</Button></div></Card>
     : !oraciones ? <Card><Empty title="Cargando la biblioteca…" text="Un momento, por favor."/></Card> : null;
-  const resultados = buscando && oraciones ? <ResultadosBusqueda busqueda={busqueda} oraciones={oraciones} notify={notify} onLimpiar={limpiar} mostrarTipo={!active}/> : null;
+  const resultados = buscando && oraciones ? <ResultadosBusqueda busqueda={busqueda} oraciones={oraciones} acciones={acciones} onLimpiar={limpiar} mostrarTipo={!active}/> : null;
   const total = buscando ? busqueda.datos?.total ?? null : null;
 
   if (!active) {
@@ -1085,7 +1217,7 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
     <PageHead title={active} subtitle={libraryMeta[active].description} action={botonSubir}/>
     <BarraBusqueda texto={texto} onTexto={setTexto} placeholder={`Buscar en ${active.toLowerCase()}…`} total={total} buscando={escribiendo || busqueda.cargando}/>
     {estado ?? resultados ?? (active === "Imágenes del widget"
-      ? delTipo[0] ? <ImagenesWidget key={version} oracion={delTipo[0]} notify={notify} onSubir={() => subir(delTipo[0].id)}/> : <Card><Empty title="Sin oración de widget" text="El catálogo no tiene la oración «Imagen del widget»."/></Card>
+      ? delTipo[0] ? <ImagenesWidget key={version} oracion={delTipo[0]} acciones={acciones} onSubir={() => subir(delTipo[0].id)}/> : <Card><Empty title="Sin oración de widget" text="El catálogo no tiene la oración «Imagen del widget»."/></Card>
       : <><div className="library-groups">{delTipo.map(oracion => {
           const abierta = !!abiertas[oracion.id];
           return <Card className="library-group" key={oracion.id}>
@@ -1094,7 +1226,7 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
               <span className="accordion-title"><b>{oracion.esFija && <span className="oracion-fija-punto" aria-label="Oración fija"/>}{tituloOracion(oracion)}</b><small>{detalleOracion(oracion)}</small></span>
               <span className={`accordion-chevron ${abierta ? "open" : ""}`}><Icon name="chevron"/></span>
             </button>
-            {abierta && <div className="accordion-body"><ContenidosOracion key={version} oracion={oracion} notify={notify} onSubir={() => subir(oracion.id)}/></div>}
+            {abierta && <div className="accordion-body"><ContenidosOracion key={version} oracion={oracion} acciones={acciones} onSubir={() => subir(oracion.id)}/></div>}
           </Card>;
         })}</div>
         {hayFijas && <p className="oracion-fija-nota"><span className="oracion-fija-punto"/>Oración fija: se muestra todos los días y no se programa en el calendario.</p>}</>)}

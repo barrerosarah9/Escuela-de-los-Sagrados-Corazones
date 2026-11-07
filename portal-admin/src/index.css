@@ -270,3 +270,8 @@ a.vista-previa:hover{border-color:var(--cherry);box-shadow:0 0 0 2px rgba(161,30
 .library-drawer .file-chip b{font-size:13px;font-weight:600}
 .library-drawer .contenido-vista>span{font-size:14px;font-weight:700}
 .library-drawer .drawer-actions .btn{font-size:14px;font-weight:700;min-height:44px;padding-left:20px;padding-right:20px}
+.library-drawer .field small.field-note{color:var(--navy);font-weight:500}
+.contenido-archivos{display:flex;flex-direction:column;gap:10px}
+.contenido-archivos .vista-previa-grande{border:1px solid var(--line);border-radius:11px;height:170px}
+.aviso-asignado{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--cream);color:#5c4710;font-size:12.5px;line-height:1.45}
+.aviso-asignado b{font-size:13px;color:#4a3909}

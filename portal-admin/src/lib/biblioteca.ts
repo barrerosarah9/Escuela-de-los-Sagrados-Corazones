@@ -46,6 +46,8 @@ export type ContenidoBiblioteca = {
   formatos: FormatoContenido[];
   youtubeUrl: string | null;
   youtubeMiniatura: string | null;
+  pdfPath: string | null;
+  imagenPath: string | null;
   pdfUrl: string | null;
   imagenUrl: string | null;
   actualizadoEn: string;
@@ -158,6 +160,8 @@ function contenidoDe(
     formatos: formatosDe(fila),
     youtubeUrl: fila.youtube_url,
     youtubeMiniatura: fila.youtube_url ? miniaturaDeYouTube(fila.youtube_url) : null,
+    pdfPath: fila.pdf_path,
+    imagenPath: fila.imagen_path,
     pdfUrl: fila.pdf_path ? urls.pdf.get(fila.pdf_path) ?? null : null,
     imagenUrl: fila.imagen_path ? urls.imagenes.get(fila.imagen_path) ?? null : null,
     actualizadoEn: fila.actualizado_en,
