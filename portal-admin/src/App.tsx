@@ -5,7 +5,7 @@ import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador,
 import { listarAsistentes, type Asistente } from "./lib/asistencias";
 import { eliminarComentario, listarComentarios, type Comentario } from "./lib/comentarios";
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
-import { CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, listarContenidos, listarOracionesBiblioteca, type ContenidoBiblioteca, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type SeccionBiblioteca } from "./lib/biblioteca";
+import { buscarContenidos, CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, LARGO_MAXIMO_BUSQUEDA, listarContenidos, listarOracionesBiblioteca, normalizarBusqueda, RESULTADOS_POR_PAGINA, type ContenidoBiblioteca, type FiltrosBusqueda, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type PaginaResultados, type SeccionBiblioteca } from "./lib/biblioteca";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -695,6 +695,8 @@ const seccionDeTipo: Record<LibraryTab, SeccionBiblioteca> = {
   "Imágenes del widget": "widget",
 };
 const tiposBiblioteca = Object.keys(seccionDeTipo) as LibraryTab[];
+const tipoDeSeccion = Object.fromEntries(tiposBiblioteca.map(tipo => [seccionDeTipo[tipo], tipo])) as Record<SeccionBiblioteca, LibraryTab>;
+const ESPERA_BUSQUEDA_MS = 300;
 const nombresDia = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 const textoContenidos = (n: number) => `${n} ${n === 1 ? "contenido" : "contenidos"}`;
 const fechaActualizacion = (iso: string) => new Date(iso).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
@@ -775,14 +777,82 @@ function usePaginaContenidos(oracionId: number, porPagina: number) {
   return { pagina, setPagina, datos, cargando, errorCarga, reintentar: () => setIntento(n => n + 1) };
 }
 
-function FilaContenidoBiblioteca({ contenido, oracion, notify }: { contenido: ContenidoBiblioteca; oracion: OracionBiblioteca; notify: (s: string) => void }) {
-  const detalle = detalleContenido(contenido, oracion);
+function FilaContenidoBiblioteca({ contenido, oracion, notify, contexto }: { contenido: ContenidoBiblioteca; oracion: OracionBiblioteca; notify: (s: string) => void; contexto?: string }) {
+  const detalle = [contexto, detalleContenido(contenido, oracion)].filter(Boolean).join(" · ");
   return <div className="library-row">
     <div className="resource-name"><VistaPrevia contenido={contenido}/><div><b>{contenido.nombre}</b>{detalle && <small>{detalle}</small>}</div></div>
     <div><Formatos formatos={contenido.formatos}/></div>
     <span className="library-date">Actualizado {fechaActualizacion(contenido.actualizadoEn)}</span>
     <div className="row-actions"><Button variant="ghost" onClick={proximamente(notify, "Editar contenidos")}>Editar</Button><Button variant="ghost" onClick={proximamente(notify, "Eliminar contenidos")}>Eliminar</Button></div>
   </div>;
+}
+
+function useValorDiferido<T>(valor: T, espera: number) {
+  const [diferido, setDiferido] = useState(valor);
+  useEffect(() => {
+    const temporizador = window.setTimeout(() => setDiferido(valor), espera);
+    return () => window.clearTimeout(temporizador);
+  }, [valor, espera]);
+  return diferido;
+}
+
+function BarraBusqueda({ texto, onTexto, seccion, onSeccion, placeholder, total, buscando }: { texto: string; onTexto: (texto: string) => void; seccion?: SeccionBiblioteca | null; onSeccion?: (seccion: SeccionBiblioteca | null) => void; placeholder: string; total: number | null; buscando: boolean }) {
+  return <div className="library-toolbar main-search">
+    <div className="search"><Icon name="search" size={18}/><input type="search" aria-label="Buscar por nombre" placeholder={placeholder} maxLength={LARGO_MAXIMO_BUSQUEDA} value={texto} onChange={e => onTexto(e.target.value)} onKeyDown={e => { if (e.key === "Escape") onTexto(""); }}/>{texto && <button type="button" className="icon-btn search-clear" aria-label="Borrar búsqueda" onClick={() => onTexto("")}><Icon name="close" size={14}/></button>}</div>
+    {onSeccion && <select className="library-filter" aria-label="Filtrar por tipo" value={seccion ?? ""} onChange={e => onSeccion((e.target.value || null) as SeccionBiblioteca | null)}>
+      <option value="">Todos los tipos</option>
+      {tiposBiblioteca.map(tipo => <option key={tipo} value={seccionDeTipo[tipo]}>{tipo}</option>)}
+    </select>}
+    {total !== null && <span aria-live="polite">{buscando ? "Buscando…" : `${total} ${total === 1 ? "resultado" : "resultados"}`}</span>}
+  </div>;
+}
+
+function useResultadosBusqueda(filtros: FiltrosBusqueda, activa: boolean) {
+  const [pagina, setPagina] = useState(1);
+  const [datos, setDatos] = useState<PaginaResultados | null>(null);
+  const [cargando, setCargando] = useState(false);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [intento, setIntento] = useState(0);
+  const clave = `${filtros.seccion ?? ""}|${filtros.texto}`;
+
+  useEffect(() => { setPagina(1); }, [clave]);
+
+  useEffect(() => {
+    if (!activa) { setDatos(null); setErrorCarga(""); return; }
+    let vigente = true;
+    setCargando(true);
+    setErrorCarga("");
+    buscarContenidos(filtros, pagina, RESULTADOS_POR_PAGINA)
+      .then(resultado => {
+        if (!vigente) return;
+        setDatos(resultado);
+        if (resultado.pagina !== pagina) setPagina(resultado.pagina);
+      })
+      .catch((e: Error) => { if (vigente) setErrorCarga(e.message); })
+      .finally(() => { if (vigente) setCargando(false); });
+    return () => { vigente = false; };
+  }, [clave, pagina, activa, intento]);
+
+  return { pagina, setPagina, datos, cargando, errorCarga, reintentar: () => setIntento(n => n + 1) };
+}
+
+function ResultadosBusqueda({ busqueda, oraciones, notify, onLimpiar, mostrarTipo }: { busqueda: ReturnType<typeof useResultadosBusqueda>; oraciones: OracionBiblioteca[]; notify: (s: string) => void; onLimpiar: () => void; mostrarTipo: boolean }) {
+  const { pagina, setPagina, datos, cargando, errorCarga, reintentar } = busqueda;
+  const porId = useMemo(() => new Map(oraciones.map(o => [o.id, o])), [oraciones]);
+
+  if (errorCarga) return <Card><Empty title="No pudimos buscar" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={reintentar}>Reintentar</Button></div></Card>;
+  if (!datos) return <Card><Empty title="Buscando…" text="Un momento, por favor."/></Card>;
+  if (!datos.resultados.length) return <Card><Empty title="No encontramos contenidos" text="Prueba con otra parte del nombre o elige otro tipo."/><div className="comentarios-reintentar"><Button variant="secondary" onClick={onLimpiar}>Limpiar búsqueda</Button></div></Card>;
+
+  return <Card className="library-results">
+    <div className={cargando ? "library-loading" : ""} aria-busy={cargando}>{datos.resultados.map(r => {
+      const oracion = porId.get(r.oracionId);
+      if (!oracion) return null;
+      const contexto = !mostrarTipo ? oracion.nombre : r.seccion === "widget" ? tipoDeSeccion[r.seccion] : `${tipoDeSeccion[r.seccion]} · ${oracion.nombre}`;
+      return <FilaContenidoBiblioteca key={r.id} contenido={r} oracion={oracion} notify={notify} contexto={contexto}/>;
+    })}</div>
+    <Paginacion pagina={pagina} totalPaginas={datos.totalPaginas} total={datos.total} mostrados={datos.resultados.length} porPagina={RESULTADOS_POR_PAGINA} cargando={cargando} onCambiar={setPagina}/>
+  </Card>;
 }
 
 function ContenidosOracion({ oracion, notify }: { oracion: OracionBiblioteca; notify: (s: string) => void }) {
@@ -823,6 +893,14 @@ function Library({ notify, active, onOpen, onBack }: { notify: (s: string) => vo
   const [errorCarga, setErrorCarga] = useState("");
   const [intento, setIntento] = useState(0);
   const [abiertas, setAbiertas] = useState<Record<number, boolean>>({});
+  const [texto, setTexto] = useState("");
+  const [filtroSeccion, setFiltroSeccion] = useState<SeccionBiblioteca | null>(null);
+  const textoDiferido = useValorDiferido(normalizarBusqueda(texto), ESPERA_BUSQUEDA_MS);
+  const seccion = active ? seccionDeTipo[active] : filtroSeccion;
+  const filtros = useMemo<FiltrosBusqueda>(() => ({ texto: textoDiferido, seccion }), [textoDiferido, seccion]);
+  const buscando = !!textoDiferido || (!active && !!filtroSeccion);
+  const busqueda = useResultadosBusqueda(filtros, buscando && !!oraciones);
+  const escribiendo = normalizarBusqueda(texto) !== textoDiferido;
 
   useEffect(() => {
     let activo = true;
@@ -833,16 +911,20 @@ function Library({ notify, active, onOpen, onBack }: { notify: (s: string) => vo
     return () => { activo = false; };
   }, [intento]);
 
-  useEffect(() => { setAbiertas({}); }, [active]);
+  useEffect(() => { setAbiertas({}); setTexto(""); }, [active]);
 
+  const limpiar = () => { setTexto(""); if (!active) setFiltroSeccion(null); };
   const totalDeTipo = (tipo: LibraryTab) => (oraciones ?? []).filter(o => o.seccion === seccionDeTipo[tipo]).reduce((suma, o) => suma + o.totalContenidos, 0);
   const estado = errorCarga
     ? <Card><Empty title="No pudimos cargar la biblioteca" text={errorCarga}/><div className="comentarios-reintentar"><Button variant="secondary" onClick={() => setIntento(n => n + 1)}>Reintentar</Button></div></Card>
     : !oraciones ? <Card><Empty title="Cargando la biblioteca…" text="Un momento, por favor."/></Card> : null;
+  const resultados = buscando && oraciones ? <ResultadosBusqueda busqueda={busqueda} oraciones={oraciones} notify={notify} onLimpiar={limpiar} mostrarTipo={!active}/> : null;
+  const total = buscando ? busqueda.datos?.total ?? null : null;
 
   if (!active) {
     return <><PageHead title="Biblioteca" subtitle="Todos los recursos espirituales en un solo lugar."/>
-      {estado ?? <div className="library-type-grid">{tiposBiblioteca.map((tipo, i) => <Card className="library-type-card" key={tipo}><button onClick={() => onOpen(tipo)}><span className={`type-card-icon type-${i}`}><Icon name={libraryMeta[tipo].icon} size={27}/></span><span className="type-card-title">{tipo}</span><span className="type-card-description">{libraryMeta[tipo].description}</span><span className="type-card-footer"><span><b>{totalDeTipo(tipo)}</b>{totalDeTipo(tipo) === 1 ? "contenido" : "contenidos"}</span><i><Icon name="chevron" size={18}/></i></span></button></Card>)}</div>}
+      <BarraBusqueda texto={texto} onTexto={setTexto} seccion={filtroSeccion} onSeccion={setFiltroSeccion} placeholder="Buscar contenidos por nombre…" total={total} buscando={escribiendo || busqueda.cargando}/>
+      {estado ?? resultados ?? <div className="library-type-grid">{tiposBiblioteca.map((tipo, i) => <Card className="library-type-card" key={tipo}><button onClick={() => onOpen(tipo)}><span className={`type-card-icon type-${i}`}><Icon name={libraryMeta[tipo].icon} size={27}/></span><span className="type-card-title">{tipo}</span><span className="type-card-description">{libraryMeta[tipo].description}</span><span className="type-card-footer"><span><b>{totalDeTipo(tipo)}</b>{totalDeTipo(tipo) === 1 ? "contenido" : "contenidos"}</span><i><Icon name="chevron" size={18}/></i></span></button></Card>)}</div>}
     </>;
   }
 
@@ -851,7 +933,8 @@ function Library({ notify, active, onOpen, onBack }: { notify: (s: string) => vo
 
   return <><div className="library-breadcrumb"><button onClick={onBack}>Biblioteca</button><Icon name="chevron" size={14}/><span>{active}</span><Button variant="secondary" icon="arrow" onClick={onBack}>Volver</Button></div>
     <PageHead title={active} subtitle={libraryMeta[active].description}/>
-    {estado ?? (active === "Imágenes del widget"
+    <BarraBusqueda texto={texto} onTexto={setTexto} placeholder={`Buscar en ${active.toLowerCase()}…`} total={total} buscando={escribiendo || busqueda.cargando}/>
+    {estado ?? resultados ?? (active === "Imágenes del widget"
       ? delTipo[0] ? <ImagenesWidget oracion={delTipo[0]} notify={notify}/> : <Card><Empty title="Sin oración de widget" text="El catálogo no tiene la oración «Imagen del widget»."/></Card>
       : <><div className="library-groups">{delTipo.map(oracion => {
           const abierta = !!abiertas[oracion.id];

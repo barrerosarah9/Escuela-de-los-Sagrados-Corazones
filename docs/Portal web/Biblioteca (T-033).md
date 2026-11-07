@@ -50,15 +50,15 @@ Cada tarjeta muestra el total de contenidos de su tipo. Ese total sale de una so
 - Si se pide una página que ya no existe (`PGRST103`), se vuelve a la página 1.
 - Cada acordeón carga sus contenidos al abrirse.
 
-## Pendiente en otras tareas
+## Relación con otras tareas
 
-- Búsqueda y filtros: T-034 (HU-39).
+- Búsqueda y filtros: hechos en T-034 (HU-39). Ver [Búsqueda de la biblioteca (T-034)](B%C3%BAsqueda%20de%20la%20biblioteca%20(T-034).md).
 - Bucket de contenidos: T-035.
 - Subir: T-036 (HU-40).
 - Editar y eliminar: T-037 (HU-41).
 
-Mientras tanto, esos botones muestran «… estará disponible pronto». El Calendario sigue usando los datos de
-ejemplo del prototipo hasta T-042.
+Mientras tanto, los botones de subir, editar y eliminar muestran «… estará disponible pronto». El Calendario sigue
+usando los datos de ejemplo del prototipo hasta T-042.
 
 ## Cómo probar en local
 
