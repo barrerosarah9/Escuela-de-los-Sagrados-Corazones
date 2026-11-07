@@ -3,6 +3,7 @@ import { createHashRouter, RouterProvider, useLocation, useNavigate } from "reac
 import logo from "./logo.webp";
 import { cerrarSesion, escucharCierreDeSesion, iniciales, ingresarAdministrador, restaurarSesion, type Administrador } from "./lib/auth";
 import { eliminarComentario, listarComentarios, type Comentario } from "./lib/comentarios";
+import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -393,55 +394,154 @@ function ComentariosPublicacion({ publicacion, notify, onEliminado }: { publicac
 }
 
 
-const TODAY = new Date(2026, 9, 8);
 const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const dayLabels = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"];
 const dayNames = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
-const offices = ["Oración a las almas del purgatorio", "Oración a los Santos Ángeles", "Lirios de San José", "Hora Santa", "Viacrucis", "Hora de María", "7 Dolores y Gozos de San José"];
-const weekDays = (offset: number) => Array.from({ length: 7 }, (_, i) => new Date(2026, 9, 5 + offset * 7 + i));
-const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const weekRange = (days: Date[]) => days[0].getMonth() === days[6].getMonth() ? `${days[0].getDate()} al ${days[6].getDate()} de ${monthNames[days[6].getMonth()]} de ${days[6].getFullYear()}` : `${days[0].getDate()} de ${monthNames[days[0].getMonth()]} al ${days[6].getDate()} de ${monthNames[days[6].getMonth()]} de ${days[6].getFullYear()}`;
+const partesDeFecha = (fecha: string) => fecha.split("-").map(Number);
+const fechaLarga = (fecha: string) => { const [, mes, dia] = partesDeFecha(fecha); return `${dayNames[diaSemanaIso(fecha) - 1]} ${dia} de ${monthNames[mes - 1]}`; };
+const rangoDeSemana = (lunes: string) => {
+  const domingo = sumarDias(lunes, 6);
+  const [, mesInicio, diaInicio] = partesDeFecha(lunes);
+  const [anio, mesFin, diaFin] = partesDeFecha(domingo);
+  return mesInicio === mesFin ? `${diaInicio} al ${diaFin} de ${monthNames[mesFin - 1]} de ${anio}` : `${diaInicio} de ${monthNames[mesInicio - 1]} al ${diaFin} de ${monthNames[mesFin - 1]} de ${anio}`;
+};
+const formularioVacio = (fecha: string, oficios: Record<number, string>): DatosOracionEnVivo => ({ fecha, hora: HORA_PREDETERMINADA, titulo: tituloSugerido(fecha, oficios), enlaceMeet: "" });
+const datosDe = (oracion: OracionEnVivo): DatosOracionEnVivo => ({ fecha: oracion.fecha, hora: oracion.hora, titulo: oracion.titulo, enlaceMeet: oracion.enlaceMeet });
 
-function LivePrayer({ notify }: { notify: (s: string) => void }) {
-  const [offset, setOffset] = useState(0);
-  const [selected, setSelected] = useState(3);
-  const [saved, setSaved] = useState<Record<string, { time: string; link: string }>>({ "2026-10-05": { time: "19:45", link: "https://meet.google.com/scj-almas" }, "2026-10-06": { time: "19:45", link: "https://meet.google.com/scj-angeles" }, "2026-10-07": { time: "19:45", link: "https://meet.google.com/scj-lirios" }, "2026-10-08": { time: "19:45", link: "https://meet.google.com/scj-hora-santa" } });
-  const days = weekDays(offset);
-  const day = days[selected];
-  const key = isoDate(day);
-  const existing = saved[key];
-  const [date, setDate] = useState(key);
-  const [time, setTime] = useState("19:45");
-  const [link, setLink] = useState(existing?.link || "");
-  const [errors, setErrors] = useState<{ date?: string; link?: string }>({});
-  const choose = (o: number, i: number) => {
-    const d = weekDays(o)[i];
-    const k = isoDate(d);
-    setOffset(o); setSelected(i); setDate(k); setTime(saved[k]?.time || "19:45"); setLink(saved[k]?.link || ""); setErrors({});
+function LivePrayer({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
+  const hoy = useMemo(() => fechaDeHoyEnBogota(), []);
+  const [lunes, setLunes] = useState(() => lunesDeLaSemana(hoy));
+  const [seleccion, setSeleccion] = useState(hoy);
+  const [oficios, setOficios] = useState<Record<number, string>>({});
+  const [semana, setSemana] = useState<Record<string, OracionEnVivo>>({});
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [recarga, setRecarga] = useState(0);
+  const [form, setForm] = useState<DatosOracionEnVivo>(() => formularioVacio(hoy, {}));
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [tituloEditado, setTituloEditado] = useState(false);
+  const [errores, setErrores] = useState<ErroresOracionEnVivo>({});
+  const [errorGeneral, setErrorGeneral] = useState("");
+  const [conflicto, setConflicto] = useState<OracionEnVivo | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const fechaConsultada = useRef("");
+  const dias = diasDeLaSemana(lunes);
+  const existente = semana[seleccion] ?? null;
+  const pasado = seleccion < hoy;
+  const bloqueado = pasado || guardando;
+
+  useEffect(() => {
+    let activo = true;
+    listarOficiosDeLaSemana()
+      .then(mapa => { if (activo) setOficios(mapa); })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); });
+    return () => { activo = false; };
+  }, []);
+
+  useEffect(() => {
+    let activo = true;
+    setCargando(true);
+    setErrorCarga("");
+    listarOracionesEnVivo(lunes, sumarDias(lunes, 6))
+      .then(lista => { if (activo) setSemana(Object.fromEntries(lista.map(oracion => [oracion.fecha, oracion]))); })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
+      .finally(() => { if (activo) setCargando(false); });
+    return () => { activo = false; };
+  }, [lunes, recarga]);
+
+  useEffect(() => {
+    if (cargando) return;
+    const oracion = semana[seleccion];
+    setForm(oracion ? datosDe(oracion) : formularioVacio(seleccion, oficios));
+    setEditandoId(oracion?.id ?? null);
+    setTituloEditado(Boolean(oracion));
+    setErrores({});
+    setErrorGeneral("");
+    setConflicto(null);
+    fechaConsultada.current = "";
+  }, [seleccion, semana, cargando]);
+
+  useEffect(() => {
+    if (editandoId === null && !tituloEditado) setForm(actual => ({ ...actual, titulo: tituloSugerido(actual.fecha, oficios) }));
+  }, [oficios]);
+
+  const abrirDia = (fecha: string) => {
+    setLunes(lunesDeLaSemana(fecha));
+    setSeleccion(fecha);
+    setRecarga(n => n + 1);
   };
-  const past = day < TODAY;
-  const save = () => {
-    const next: { date?: string; link?: string } = {};
-    if (new Date(`${date}T12:00:00`) < TODAY) next.date = "La fecha ya pasó; elige hoy o una fecha futura";
-    if (!/^https:\/\/meet\.google\.com\/[\w-]+$/.test(link.trim())) next.link = "Ingresa un enlace válido de Google Meet";
-    setErrors(next);
-    if (next.date || next.link) return;
-    setSaved({ ...saved, [date]: { time, link: link.trim() } });
-    notify(existing ? "Oración actualizada" : "Oración programada");
+  const moverSemana = (dias: number) => {
+    setLunes(sumarDias(lunes, dias));
+    setSeleccion(sumarDias(seleccion, dias));
   };
-  const firstNames = ["María Fernanda", "Carlos", "Lucía", "Andrés", "Sofía", "Jorge", "Ana María", "Luis", "Paula", "Juan Pablo", "Camila", "Diego"];
-  const lastNames = ["López", "Restrepo", "Gómez", "Ramírez", "Martínez", "Cárdenas", "Rodríguez", "Vargas", "Moreno", "Castro", "Ortiz"];
-  const total = existing && selected < 5 ? 48 - selected * 5 : 0;
-  const attendees = Array.from({ length: total }, (_, i) => `${firstNames[i % firstNames.length]} ${lastNames[(i * 7 + selected) % lastNames.length]}`);
-  return <><PageHead title="Oración en vivo" subtitle={`Semana del ${weekRange(days)}.`} action={<div className="head-actions"><Button variant="secondary" icon="arrow" onClick={() => choose(offset - 1, selected)}>Semana anterior</Button><Button variant="secondary" onClick={() => choose(offset + 1, selected)}>Semana siguiente</Button>{offset !== 0 && <Button variant="ghost" onClick={() => choose(0, 3)}>Esta semana</Button>}</div>}/>
-    <div className="week-tabs">{days.map((d, i) => { const k = isoDate(d); return <button key={k} className={selected === i ? "active" : ""} onClick={() => choose(offset, i)}><small>{dayLabels[i]}</small><b>{d.getDate()}</b><i className={saved[k] ? (d < TODAY ? "done" : "current") : ""}/></button>; })}</div>
+  const cambiar = (campo: keyof DatosOracionEnVivo, valor: string) => {
+    setForm(actual => ({ ...actual, [campo]: valor }));
+    setErrores(actual => ({ ...actual, [campo]: undefined }));
+    setErrorGeneral("");
+  };
+  const cambiarTitulo = (valor: string) => {
+    setTituloEditado(true);
+    cambiar("titulo", valor);
+  };
+  const cambiarFecha = async (fecha: string) => {
+    setForm(actual => ({ ...actual, fecha, titulo: tituloEditado ? actual.titulo : tituloSugerido(fecha, oficios) }));
+    setErrores(actual => ({ ...actual, fecha: undefined }));
+    setErrorGeneral("");
+    setConflicto(null);
+    fechaConsultada.current = fecha;
+    if (!esFechaValida(fecha) || fecha === existente?.fecha) return;
+    const otra = semana[fecha] ?? await buscarOracionPorFecha(fecha).catch(() => null);
+    if (fechaConsultada.current === fecha && otra && otra.id !== editandoId) setConflicto(otra);
+  };
+  const guardar = async (e: FormEvent) => {
+    e.preventDefault();
+    if (bloqueado || conflicto) return;
+    const validacion = validarOracionEnVivo(form);
+    setErrores(validacion);
+    setErrorGeneral("");
+    if (tieneErrores(validacion)) return;
+    setGuardando(true);
+    const resultado = await guardarOracionEnVivo(form, admin.id, editandoId);
+    setGuardando(false);
+    if (resultado.estado === "ok") {
+      notify(resultado.creada ? "Oración programada" : "Oración actualizada");
+      abrirDia(resultado.oracion.fecha);
+    } else if (resultado.estado === "invalida") {
+      setErrores(resultado.errores);
+    } else if (resultado.estado === "ya_existe") {
+      setConflicto(resultado.oracion);
+    } else if (resultado.estado === "no_existe") {
+      notify(resultado.mensaje);
+      setRecarga(n => n + 1);
+    } else {
+      setErrorGeneral(resultado.mensaje);
+    }
+  };
+
+  const estado = existente ? (pasado ? "Realizada" : "Programada") : pasado ? "Sin programar" : "Pendiente";
+  const tono = existente ? "success" : pasado ? "neutral" : "warning";
+  const ayuda = pasado ? "Este día ya pasó; solo puedes consultar su información." : existente ? "Edita los datos de la oración programada." : "Programa el encuentro de este día. El título se llena con el oficio del día.";
+  const textoBoton = guardando ? "Guardando…" : editandoId === null ? "Programar oración" : "Guardar cambios";
+
+  return <><PageHead title="Oración en vivo" subtitle={`Semana del ${rangoDeSemana(lunes)}.`} action={<div className="head-actions"><Button variant="secondary" icon="arrow" disabled={guardando} onClick={() => moverSemana(-7)}>Semana anterior</Button><Button variant="secondary" disabled={guardando} onClick={() => moverSemana(7)}>Semana siguiente</Button>{lunes !== lunesDeLaSemana(hoy) && <Button variant="ghost" disabled={guardando} onClick={() => abrirDia(hoy)}>Esta semana</Button>}</div>}/>
+    <div className="week-tabs">{dias.map((fecha, i) => <button key={fecha} type="button" className={seleccion === fecha ? "active" : ""} disabled={guardando} onClick={() => setSeleccion(fecha)}><small>{dayLabels[i]}</small><b>{partesDeFecha(fecha)[2]}</b><i className={semana[fecha] ? (fecha < hoy ? "done" : "current") : ""}/></button>)}</div>
+    {errorCarga && <div className="form-error" role="alert">{errorCarga}</div>}
     <div className="detail-grid live-grid">
-      <Card><div className="card-head"><div><div className="card-title">{offices[selected]}</div><div className="muted">{past ? "Este día ya pasó; solo puedes consultar su información." : existing ? "Edita los datos de la oración programada." : "Programa el encuentro de este día."}</div></div><Badge tone={existing ? "success" : past ? "neutral" : "warning"}>{existing ? "Programada" : past ? "Sin programar" : "Pendiente"}</Badge></div>
-        <div className="form-grid"><Input label="Título" value={offices[selected]}/><Input label="Fecha" type="date" value={date} onChange={v => { setDate(v); setErrors({ ...errors, date: undefined }); }} error={errors.date}/><Input label="Hora" type="time" value={time} onChange={setTime}/><Input label="Enlace de Google Meet" placeholder="https://meet.google.com/…" value={link} onChange={v => { setLink(v); setErrors({ ...errors, link: undefined }); }} error={errors.link}/></div>
-        <div className="form-actions"><Button disabled={past} onClick={save}>{existing ? "Guardar cambios" : "Programar oración"}</Button></div>
+      <Card><div className="card-head"><div><div className="card-title">{existente?.titulo || tituloSugerido(seleccion, oficios) || "Oración en vivo"}</div><div className="muted">{cargando ? "Cargando…" : ayuda}</div></div><Badge tone={tono}>{estado}</Badge></div>
+        <form onSubmit={guardar} noValidate>
+          <div className="form-grid">
+            <label className="field"><span>Título</span><input type="text" maxLength={LARGO_MAXIMO_TITULO} value={form.titulo} disabled={bloqueado || cargando} onChange={e => cambiarTitulo(e.target.value)}/>{errores.titulo && <small>{errores.titulo}</small>}</label>
+            <label className="field"><span>Fecha</span><input type="date" min={hoy} value={form.fecha} disabled={bloqueado || cargando} onChange={e => { void cambiarFecha(e.target.value); }}/>{errores.fecha && <small>{errores.fecha}</small>}</label>
+            <label className="field"><span>Hora</span><input type="time" value={form.hora} disabled={bloqueado || cargando} onChange={e => cambiar("hora", e.target.value)}/>{errores.hora && <small>{errores.hora}</small>}</label>
+            <label className="field"><span>Enlace de Google Meet</span><input type="url" inputMode="url" placeholder="https://meet.google.com/abc-defg-hij" value={form.enlaceMeet} disabled={bloqueado || cargando} onChange={e => cambiar("enlaceMeet", e.target.value)}/>{errores.enlaceMeet && <small>{errores.enlaceMeet}</small>}</label>
+          </div>
+          {conflicto && <div className="form-error" role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><span>{MENSAJES_ORACION_EN_VIVO.yaExiste} El {fechaLarga(conflicto.fecha)} está «{conflicto.titulo}» a las {conflicto.hora}.</span><Button variant="secondary" onClick={() => abrirDia(conflicto.fecha)}>Editar esa oración</Button></div>}
+          {errorGeneral && <div className="form-error" role="alert">{errorGeneral}</div>}
+          {!pasado && <div className="form-actions"><Button type="submit" disabled={guardando || cargando || Boolean(conflicto)}>{textoBoton}</Button></div>}
+        </form>
       </Card>
-      <Card><div className="card-head"><div><div className="card-title">Asistentes confirmados</div><div className="muted">Encuentro del {dayNames[selected]} {day.getDate()} de {monthNames[day.getMonth()]}</div></div><div className="big-count">{attendees.length}</div></div>
-        {attendees.length ? <div className="attendees attendee-scroll">{attendees.map((n, i) => <div key={`${n}-${i}`}><span className={`avatar av-${(i % 4) + 1}`}>{n.split(" ").map(x => x[0]).slice(0, 2)}</span><b>{n}</b><small>Confirmó {i < 6 ? "hoy" : "ayer"}</small></div>)}</div> : <Empty title="Nadie ha confirmado todavía" text="Los nombres aparecerán aquí cuando confirmen asistencia."/>}
+      <Card><div className="card-head"><div><div className="card-title">Asistentes confirmados</div><div className="muted">Encuentro del {fechaLarga(seleccion)}</div></div></div>
+        <Empty title="Disponible pronto" text="Aquí verás quiénes confirmaron asistencia a esta oración."/>
       </Card>
     </div></>;
 }
@@ -871,7 +971,7 @@ function PortalApp() {
   const content=useMemo(()=>{
     if(section==="Resumen") return <Summary/>;
     if(section==="Publicaciones") return admin ? <Publications admin={admin} notify={notify}/> : null;
-    if(section==="Oración en vivo") return <LivePrayer notify={notify}/>;
+    if(section==="Oración en vivo") return admin ? <LivePrayer admin={admin} notify={notify}/> : null;
     if(section==="Biblioteca") return <Library confirm={confirm} notify={notify} active={libraryType} onOpen={tab=>navigate(`/biblioteca/${libraryMeta[tab].slug}`)} onBack={()=>navigate("/biblioteca")}/>;
     if(section==="Calendario") return <Calendar notify={notify}/>;
     if(section==="Usuarios") return <Users confirm={confirm} notify={notify}/>;
