@@ -55,25 +55,22 @@ Cada tarjeta muestra el total de contenidos de su tipo. Ese total sale de una so
 
 - Búsqueda y filtros: hechos en T-034 (HU-39). Ver [Búsqueda de la biblioteca (T-034)](B%C3%BAsqueda%20de%20la%20biblioteca%20(T-034).md).
 - Buckets de contenidos: hechos en T-035.
-- Subir: T-036 (HU-40).
-- Editar y eliminar: T-037 (HU-41).
+- Subir: hecho en T-036 (HU-40). Ver [Subir contenidos (T-036)](Subir%20contenidos%20(T-036).md).
+- Editar y eliminar: T-037 (HU-41). Mientras tanto, esos botones muestran «… estará disponible pronto».
 
-Mientras tanto, los botones de subir, editar y eliminar muestran «… estará disponible pronto». El Calendario sigue
-usando los datos de ejemplo del prototipo hasta T-042.
+El Calendario sigue usando los datos de ejemplo del prototipo hasta T-042.
 
 ## Cómo probar en local
 
 1. `npx supabase start` y, en `portal-admin/`, `npm run dev` con `.env.development.local` apuntando al local.
-2. Cargar contenidos de prueba con `docker exec -i <contenedor supabase_db_…> psql -U postgres`. Usar los tres
-   formatos, 12 contenidos en Jaculatorias, 4 sábados de Hora de María, las fijas en su límite y 14 imágenes del
-   widget.
-3. Para ver vistas previas reales, subir un PDF y una imagen como administrador a la ruta
-   `<seccion>/<clave>/<archivo>` de su bucket y poner esas rutas en `pdf_path` e `imagen_path`.
-4. Revisar:
+2. Cargar contenidos de prueba con `docker exec -i <contenedor supabase_db_…> psql -U postgres`, o subirlos desde
+   el panel de T-036. Usar los tres formatos, 12 contenidos en Jaculatorias, 4 sábados de Hora de María, las
+   fijas en su límite y 14 imágenes del widget.
+3. Revisar:
    - los totales de las tarjetas;
    - la paginación de Jaculatorias (1–10 y 11–12) y del widget (1–12 y 13–14);
    - las miniaturas de YouTube y las vistas previas de imagen;
    - las fijas al final con su aviso de límite;
    - las oraciones sin contenido con su estado vacío.
-5. Al terminar, borrar los archivos de prueba con la API de Storage y los contenidos de prueba
+4. Al terminar, borrar los archivos de prueba con la API de Storage y los contenidos de prueba
    (`delete from public.contenidos;` en la base local).
