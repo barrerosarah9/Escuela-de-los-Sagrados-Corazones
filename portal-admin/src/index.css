@@ -116,7 +116,7 @@ nav button span{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis
 .prayer-empty+.accordion-upload{padding-top:0}
 .widget-upload{display:flex;justify-content:flex-start;margin-top:15px}
 .drawer-backdrop{position:fixed;inset:0;background:rgba(25,14,14,.35);z-index:30;display:flex;justify-content:flex-end;backdrop-filter:blur(2px)}
-.library-drawer{width:min(460px,92vw);height:100vh;height:100dvh;background:var(--white);box-shadow:-12px 0 40px rgba(25,14,14,.14);display:flex;flex-direction:column;animation:drawer-in .22s ease-out}
+.library-drawer{width:min(640px,100vw);height:100vh;height:100dvh;background:var(--white);box-shadow:-12px 0 40px rgba(25,14,14,.14);display:flex;flex-direction:column;animation:drawer-in .22s ease-out}
 @keyframes drawer-in{from{transform:translateX(100%)}to{transform:translateX(0)}}
 .drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;padding:22px 24px;border-bottom:1px solid var(--line)}
 .drawer-head small{display:block;color:var(--cherry);font-size:9px;font-weight:700;margin-bottom:7px;line-height:1.4}

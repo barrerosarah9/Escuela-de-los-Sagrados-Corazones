@@ -904,7 +904,8 @@ function CampoArchivo({ etiqueta, ayuda, icono, aceptar, archivo, error, onElegi
   </div>;
 }
 
-function FormularioContenido({ oraciones, oracionInicial, admin, onCerrar, onGuardado }: { oraciones: OracionBiblioteca[]; oracionInicial: number | null; admin: Administrador; onCerrar: () => void; onGuardado: (oracion: OracionBiblioteca) => void }) {
+function FormularioContenido({ oraciones, oracionInicial, seccion, admin, onCerrar, onGuardado }: { oraciones: OracionBiblioteca[]; oracionInicial: number | null; seccion: SeccionBiblioteca | null; admin: Administrador; onCerrar: () => void; onGuardado: (oracion: OracionBiblioteca) => void }) {
+  const tiposVisibles = seccion ? [tipoDeSeccion[seccion]] : tiposBiblioteca;
   const [oracionId, setOracionId] = useState<number | null>(oracionInicial);
   const [nombre, setNombre] = useState("");
   const [nombreEditado, setNombreEditado] = useState(false);
@@ -986,12 +987,12 @@ function FormularioContenido({ oraciones, oracionInicial, admin, onCerrar, onGua
   const etiquetaVariante = campo === "diaConsagracion" ? "Día de la consagración *" : "Número de variante *";
   return <div className="drawer-backdrop" onMouseDown={() => { if (!guardando) onCerrar(); }}>
     <form className="library-drawer" onMouseDown={e => e.stopPropagation()} onSubmit={guardar} noValidate aria-labelledby="titulo-subir-contenido">
-      <div className="drawer-head"><div><small>{oracion ? `${tipoDeSeccion[oracion.seccion]} · ${tituloOracion(oracion)}` : "Biblioteca"}</small><div className="modal-title" id="titulo-subir-contenido">Subir contenido</div></div><button type="button" className="icon-btn" aria-label="Cerrar" disabled={guardando} onClick={onCerrar}><Icon name="close"/></button></div>
+      <div className="drawer-head"><div><small>{oracion ? `${tipoDeSeccion[oracion.seccion]} · ${tituloOracion(oracion)}` : seccion ? tipoDeSeccion[seccion] : "Biblioteca"}</small><div className="modal-title" id="titulo-subir-contenido">Subir contenido</div></div><button type="button" className="icon-btn" aria-label="Cerrar" disabled={guardando} onClick={onCerrar}><Icon name="close"/></button></div>
       <div className="drawer-body">
         <label className="field"><span>Tipo de oración *</span>
           <select value={oracionId ?? ""} onChange={e => setOracionId(e.target.value ? Number(e.target.value) : null)}>
             <option value="">Elige el tipo…</option>
-            {tiposBiblioteca.map(tipo => <optgroup key={tipo} label={tipo}>{ordenarOraciones(oraciones.filter(o => o.seccion === seccionDeTipo[tipo])).map(o => <option key={o.id} value={o.id} disabled={oracionLlena(o)}>{tituloOracion(o)}{oracionLlena(o) ? " (completa)" : ""}</option>)}</optgroup>)}
+            {tiposVisibles.map(tipo => <optgroup key={tipo} label={tipo}>{ordenarOraciones(oraciones.filter(o => o.seccion === seccionDeTipo[tipo])).map(o => <option key={o.id} value={o.id} disabled={oracionLlena(o)}>{tituloOracion(o)}{oracionLlena(o) ? " (completa)" : ""}</option>)}</optgroup>)}
           </select>
           {errores.oracion && <small role="alert">{errores.oracion}</small>}
         </label>
@@ -1057,8 +1058,9 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
     if (tipo === active) setAbiertas(actuales => ({ ...actuales, [oracion.id]: true }));
     else if (!buscando) { abrirAlEntrar.current = oracion.id; onOpen(tipo); }
   };
-  const botonSubir = <Button icon="upload" onClick={() => subir(null)} disabled={!oraciones}>Subir contenido</Button>;
-  const panel = formulario && oraciones ? <FormularioContenido oraciones={oraciones} oracionInicial={formulario.oracionId} admin={admin} onCerrar={() => setFormulario(null)} onGuardado={alGuardar}/> : null;
+  const disponiblesDelTipo = active ? (oraciones ?? []).filter(o => o.seccion === seccionDeTipo[active] && !oracionLlena(o)) : [];
+  const botonSubir = <Button icon="upload" onClick={() => subir(disponiblesDelTipo.length === 1 ? disponiblesDelTipo[0].id : null)} disabled={!oraciones}>Subir contenido</Button>;
+  const panel = formulario && oraciones ? <FormularioContenido oraciones={oraciones} oracionInicial={formulario.oracionId} seccion={active ? seccionDeTipo[active] : null} admin={admin} onCerrar={() => setFormulario(null)} onGuardado={alGuardar}/> : null;
 
   const limpiar = () => { setTexto(""); if (!active) setFiltroSeccion(null); };
   const totalDeTipo = (tipo: LibraryTab) => (oraciones ?? []).filter(o => o.seccion === seccionDeTipo[tipo]).reduce((suma, o) => suma + o.totalContenidos, 0);
