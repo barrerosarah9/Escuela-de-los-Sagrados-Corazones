@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 
-const BUCKET_CONTENIDOS = 'contenidos';
+export const BUCKET_IMAGENES = 'contenidos-imagenes';
+export const BUCKET_PDF = 'contenidos-pdf';
 const DURACION_URL_ARCHIVO = 60 * 60;
 const COLUMNAS_ORACION =
   'id, clave, nombre, seccion, es_fija, max_contenidos, dia_semana, orden, contenidos(count)';
@@ -126,13 +127,13 @@ export function miniaturaDeYouTube(url: string) {
   return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null;
 }
 
-async function urlsFirmadas(rutas: string[]) {
+async function urlsFirmadas(bucket: string, rutas: string[]) {
   const urls = new Map<string, string>();
   if (!rutas.length) {
     return urls;
   }
   const { data, error } = await supabase.storage
-    .from(BUCKET_CONTENIDOS)
+    .from(bucket)
     .createSignedUrls(rutas, DURACION_URL_ARCHIVO);
   if (error || !data) {
     return urls;
@@ -145,7 +146,10 @@ async function urlsFirmadas(rutas: string[]) {
   return urls;
 }
 
-function contenidoDe(fila: FilaContenido, urls: Map<string, string>): ContenidoBiblioteca {
+function contenidoDe(
+  fila: FilaContenido,
+  urls: { pdf: Map<string, string>; imagenes: Map<string, string> },
+): ContenidoBiblioteca {
   return {
     id: fila.id,
     nombre: fila.nombre,
@@ -154,17 +158,23 @@ function contenidoDe(fila: FilaContenido, urls: Map<string, string>): ContenidoB
     formatos: formatosDe(fila),
     youtubeUrl: fila.youtube_url,
     youtubeMiniatura: fila.youtube_url ? miniaturaDeYouTube(fila.youtube_url) : null,
-    pdfUrl: fila.pdf_path ? urls.get(fila.pdf_path) ?? null : null,
-    imagenUrl: fila.imagen_path ? urls.get(fila.imagen_path) ?? null : null,
+    pdfUrl: fila.pdf_path ? urls.pdf.get(fila.pdf_path) ?? null : null,
+    imagenUrl: fila.imagen_path ? urls.imagenes.get(fila.imagen_path) ?? null : null,
     actualizadoEn: fila.actualizado_en,
   };
 }
 
 async function urlsDeFilas(filas: FilaContenido[]) {
-  const rutas = filas.flatMap(fila =>
-    [fila.pdf_path, fila.imagen_path].filter((ruta): ruta is string => !!ruta),
-  );
-  return urlsFirmadas(rutas).catch(() => new Map<string, string>());
+  const rutasPdf = filas.map(fila => fila.pdf_path).filter((ruta): ruta is string => !!ruta);
+  const rutasImagen = filas
+    .map(fila => fila.imagen_path)
+    .filter((ruta): ruta is string => !!ruta);
+  const vacio = () => new Map<string, string>();
+  const [pdf, imagenes] = await Promise.all([
+    urlsFirmadas(BUCKET_PDF, rutasPdf).catch(vacio),
+    urlsFirmadas(BUCKET_IMAGENES, rutasImagen).catch(vacio),
+  ]);
+  return { pdf, imagenes };
 }
 
 export function normalizarBusqueda(texto: string) {
@@ -226,6 +236,7 @@ export async function listarContenidos(
       .order('fecha', { ascending: false, nullsFirst: false })
       .order('numero', { ascending: true, nullsFirst: false })
       .order('creado_en', { ascending: true })
+      .order('id', { ascending: true })
       .range(desde, desde + porPagina - 1);
 
     if (error) {
@@ -276,6 +287,7 @@ export async function buscarContenidos(
       .order('fecha', { ascending: false, nullsFirst: false })
       .order('numero', { ascending: true, nullsFirst: false })
       .order('creado_en', { ascending: true })
+      .order('id', { ascending: true })
       .range(desde, desde + porPagina - 1);
 
     if (error) {
