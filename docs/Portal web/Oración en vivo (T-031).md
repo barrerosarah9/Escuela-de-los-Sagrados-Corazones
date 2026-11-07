@@ -28,7 +28,8 @@ T-007 y la política «administrar» de T-008.
   - Fecha: hoy o futura. El selector no deja elegir días pasados y la validación rechaza los escritos a mano.
   - Título obligatorio, máximo 120 caracteres. Hora obligatoria (19:45 por defecto).
 - **Días pasados:** se muestran en solo lectura.
-- La lista de asistentes muestra «Disponible pronto»; se conecta en HU-37.
+- La tarjeta de asistentes confirmados de cada día se documenta en
+  [Asistentes confirmados (T-032)](Asistentes%20confirmados%20(T-032).md).
 
 ## Cómo probar en local
 
