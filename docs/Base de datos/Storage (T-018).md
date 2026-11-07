@@ -161,8 +161,8 @@ Igual que en `avatares`, Storage responde HTTP 400 en los tres casos; el motivo 
 
 - **T-036 (subir):** armar la ruta con `<seccion>/<clave>/<uuid>.<ext>` desde la oración elegida y validar
   formato y tamaño antes de subir, para mostrar el mensaje sin esperar a Storage.
-- **T-037 (editar y eliminar):** al reemplazar o eliminar un contenido, borrar también su archivo de Storage;
-  borrar la fila de `contenidos` no lo borra.
+- **T-037 (editar y eliminar):** hecho. Al eliminar un contenido se borran su PDF y su imagen, y al cambiarlo de
+  tipo sus archivos se mueven a la carpeta del nuevo tipo. Ver `docs/Portal web/Editar y eliminar contenidos (T-037).md`.
 - **Widget (sprint 5):** el widget no puede pedir URL firmadas por su cuenta; la app debe descargarle la imagen
   del día o pasarle una URL firmada vigente.
 
