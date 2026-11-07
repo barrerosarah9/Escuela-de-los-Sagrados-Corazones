@@ -236,6 +236,7 @@ export async function listarContenidos(
       .order('fecha', { ascending: false, nullsFirst: false })
       .order('numero', { ascending: true, nullsFirst: false })
       .order('creado_en', { ascending: true })
+      .order('id', { ascending: true })
       .range(desde, desde + porPagina - 1);
 
     if (error) {
@@ -286,6 +287,7 @@ export async function buscarContenidos(
       .order('fecha', { ascending: false, nullsFirst: false })
       .order('numero', { ascending: true, nullsFirst: false })
       .order('creado_en', { ascending: true })
+      .order('id', { ascending: true })
       .range(desde, desde + porPagina - 1);
 
     if (error) {
