@@ -59,66 +59,66 @@ set local role authenticated;
 set local request.jwt.claims to '{"sub": "dddddddd-0000-4000-8000-000000000001", "role": "authenticated"}';
 
 select lives_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/hora-maria/prueba-t035.pdf')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/hora-maria/prueba-pgtap.pdf')$$,
   'Administrador: sube un PDF en <seccion>/<clave>/'
 );
 
 select lives_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-imagenes', 'widget/imagen-widget/prueba-t035.PNG')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-imagenes', 'widget/imagen-widget/prueba-pgtap.PNG')$$,
   'Administrador: sube una imagen del widget (extensión en mayúsculas)'
 );
 
 select lives_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-imagenes', 'dia/jaculatorias/prueba-t035.jpeg')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-imagenes', 'dia/jaculatorias/prueba-pgtap.jpeg')$$,
   'Administrador: sube una imagen de una oración del día'
 );
 
 select throws_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'widget/imagen-widget/prueba-t035.pdf')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'widget/imagen-widget/prueba-pgtap.pdf')$$,
   '42501', null,
   'Administrador: no sube PDF del widget'
 );
 
 select throws_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/hora-maria/prueba-t035.jpg')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/hora-maria/prueba-pgtap.jpg')$$,
   '42501', null,
   'Administrador: no sube una extensión distinta a la del bucket'
 );
 
 select throws_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'mes/hora-maria/prueba-t035.pdf')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'mes/hora-maria/prueba-pgtap.pdf')$$,
   '42501', null,
   'Administrador: no sube si la sección no es la de la oración'
 );
 
 select throws_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/no-existe/prueba-t035.pdf')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/no-existe/prueba-pgtap.pdf')$$,
   '42501', null,
   'Administrador: no sube en una oración que no existe'
 );
 
 select throws_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/prueba-t035.pdf')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/prueba-pgtap.pdf')$$,
   '42501', null,
   'Administrador: no sube sin la carpeta de la oración'
 );
 
 select throws_ok(
-  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/hora-maria/extra/prueba-t035.pdf')$$,
+  $$insert into storage.objects (bucket_id, name) values ('contenidos-pdf', 'semana/hora-maria/extra/prueba-pgtap.pdf')$$,
   '42501', null,
   'Administrador: no sube con carpetas de más'
 );
 
 with u as (
   update storage.objects set metadata = '{"version": 2}'
-  where bucket_id = 'contenidos-pdf' and name = 'semana/hora-maria/prueba-t035.pdf'
+  where bucket_id = 'contenidos-pdf' and name = 'semana/hora-maria/prueba-pgtap.pdf'
   returning 1
 )
 select is(count(*)::int, 1, 'Administrador: reemplaza un PDF') from u;
 
 select throws_ok(
-  $$update storage.objects set name = 'otra/ruta/prueba-t035.pdf'
-    where bucket_id = 'contenidos-pdf' and name = 'semana/hora-maria/prueba-t035.pdf'$$,
+  $$update storage.objects set name = 'otra/ruta/prueba-pgtap.pdf'
+    where bucket_id = 'contenidos-pdf' and name = 'semana/hora-maria/prueba-pgtap.pdf'$$,
   '42501', null,
   'Administrador: no mueve un archivo a una ruta inválida'
 );
@@ -127,7 +127,7 @@ set local request.jwt.claims to '{"sub": "dddddddd-0000-4000-8000-000000000002",
 
 select is(
   (select count(*)::int from storage.objects
-   where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-t035%'),
+   where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-pgtap%'),
   3,
   'Usuario: lee los archivos de la biblioteca'
 );
@@ -140,14 +140,14 @@ select throws_ok(
 
 with u as (
   update storage.objects set metadata = '{"intento": "usuario"}'
-  where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-t035%'
+  where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-pgtap%'
   returning 1
 )
 select is(count(*)::int, 0, 'Usuario: no reemplaza archivos') from u;
 
 with u as (
   delete from storage.objects
-  where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-t035%'
+  where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-pgtap%'
   returning 1
 )
 select is(count(*)::int, 0, 'Usuario: no borra archivos') from u;
@@ -181,7 +181,7 @@ set local request.jwt.claims to '{"sub": "dddddddd-0000-4000-8000-000000000001",
 
 with u as (
   delete from storage.objects
-  where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-t035%'
+  where bucket_id in ('contenidos-imagenes', 'contenidos-pdf') and name like '%prueba-pgtap%'
   returning 1
 )
 select is(count(*)::int, 3, 'Administrador: borra los archivos') from u;

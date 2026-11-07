@@ -53,10 +53,10 @@ Cada tarjeta muestra el total de contenidos de su tipo. Ese total sale de una so
 
 ## Relación con otras tareas
 
-- Búsqueda y filtros: hechos en T-034 (HU-39). Ver [Búsqueda de la biblioteca (T-034)](B%C3%BAsqueda%20de%20la%20biblioteca%20(T-034).md).
-- Buckets de contenidos: hechos en T-035.
-- Subir: hecho en T-036 (HU-40). Ver [Subir contenidos (T-036)](Subir%20contenidos%20(T-036).md).
-- Editar y eliminar: T-037 (HU-41). Mientras tanto, esos botones muestran «… estará disponible pronto».
+- Búsqueda y filtros: T-034 (HU-39). Ver [Búsqueda de la biblioteca (T-034)](B%C3%BAsqueda%20de%20la%20biblioteca%20(T-034).md).
+- Buckets de contenidos: T-035.
+- Subir: T-036 (HU-40). Ver [Subir contenidos (T-036)](Subir%20contenidos%20(T-036).md).
+- Editar y eliminar: T-037 (HU-41). Ver [Editar y eliminar contenidos (T-037)](Editar%20y%20eliminar%20contenidos%20(T-037).md).
 
 El Calendario sigue usando los datos de ejemplo del prototipo hasta T-042.
 
@@ -72,5 +72,5 @@ El Calendario sigue usando los datos de ejemplo del prototipo hasta T-042.
    - las miniaturas de YouTube y las vistas previas de imagen;
    - las fijas al final con su aviso de límite;
    - las oraciones sin contenido con su estado vacío.
-4. Al terminar, borrar los archivos de prueba con la API de Storage y los contenidos de prueba
-   (`delete from public.contenidos;` en la base local).
+4. Al terminar, eliminar los contenidos de prueba desde el portal (T-037 borra también sus archivos) o con
+   `delete from public.contenidos;` en la base local.

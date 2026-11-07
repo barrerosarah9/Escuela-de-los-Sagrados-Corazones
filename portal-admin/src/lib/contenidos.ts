@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
-import { BUCKET_IMAGENES, BUCKET_PDF, idDeYouTube, type OracionBiblioteca } from './biblioteca';
+import {
+  BUCKET_IMAGENES,
+  BUCKET_PDF,
+  idDeYouTube,
+  type ContenidoBiblioteca,
+  type OracionBiblioteca,
+} from './biblioteca';
+import { fechaDeHoyEnBogota } from './oracion-en-vivo';
 
 const MEGABYTE = 1024 * 1024;
 const EXTENSIONES_IMAGEN: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png' };
@@ -48,7 +55,15 @@ export const MENSAJES_CONTENIDO = {
     'Ingresa un enlace válido de YouTube, por ejemplo https://www.youtube.com/watch?v=abc123.',
   numeroRepetido: 'Ya existe un contenido con ese número en esta oración.',
   fechaRepetida: 'Ya hay una Hora de María para ese sábado.',
-  sinPermisos: 'Tu cuenta no tiene permisos para subir contenidos. Vuelve a iniciar sesión.',
+  widgetSoloImagen:
+    'Las imágenes del widget solo admiten imagen. Este contenido tiene PDF o video de YouTube.',
+  asignadoCalendario:
+    'Este contenido está asignado en el calendario. Quítalo de esos días antes de cambiar su tipo.',
+  noExiste: 'Este contenido ya no existe. Recarga la biblioteca.',
+  moverArchivos: 'No pudimos mover los archivos al nuevo tipo. Inténtalo de nuevo.',
+  eliminar: 'No pudimos eliminar el contenido. Inténtalo de nuevo.',
+  revisarCalendario: 'No pudimos revisar el calendario. Inténtalo de nuevo.',
+  sinPermisos: 'Tu cuenta no tiene permisos para cambiar contenidos. Vuelve a iniciar sesión.',
   sinConexion: 'No hay conexión a internet. Revisa tu red e inténtalo de nuevo.',
   subida: 'No pudimos subir el archivo. Inténtalo de nuevo.',
   desconocido: 'No pudimos guardar el contenido. Inténtalo de nuevo en unos minutos.',
@@ -314,4 +329,146 @@ export async function guardarContenido(
     if (error instanceof ErrorContenido) throw error;
     throw new ErrorContenido(MENSAJES_CONTENIDO.sinConexion);
   }
+}
+
+export type DatosEdicion = {
+  oracionId: number | null;
+  nombre: string;
+  numero: string;
+  fecha: string;
+};
+
+export function validarEdicion(
+  datos: DatosEdicion,
+  oracion: OracionBiblioteca | undefined,
+  contenido: ContenidoBiblioteca,
+  oracionOriginalId: number,
+): ErroresContenido {
+  const errores = validarContenido(
+    { ...datos, pdf: null, imagen: null, youtube: '' },
+    oracion && oracion.id === oracionOriginalId ? { ...oracion, maxContenidos: null } : oracion,
+  );
+  delete errores.archivos;
+  delete errores.imagen;
+  if (esWidget(oracion) && (contenido.pdfPath || contenido.youtubeUrl)) {
+    errores.oracion = MENSAJES_CONTENIDO.widgetSoloImagen;
+  }
+  return errores;
+}
+
+function nombreDeArchivo(ruta: string) {
+  return ruta.slice(ruta.lastIndexOf('/') + 1);
+}
+
+async function moverArchivo(bucket: string, desde: string, hacia: string) {
+  const { error } = await supabase.storage.from(bucket).move(desde, hacia);
+  if (error) {
+    const codigo = String((error as { statusCode?: string }).statusCode ?? '');
+    if (codigo === '403') throw new ErrorContenido(MENSAJES_CONTENIDO.sinPermisos);
+    if (esErrorDeRed(error.message)) throw new ErrorContenido(MENSAJES_CONTENIDO.sinConexion);
+    throw new ErrorContenido(MENSAJES_CONTENIDO.moverArchivos);
+  }
+}
+
+function errorDeEdicion(error: { code?: string; message: string }) {
+  if (error.code === '23503' && /calendario|asignaciones/.test(error.message)) {
+    return new ErrorContenido(MENSAJES_CONTENIDO.asignadoCalendario, 'oracion');
+  }
+  return errorDeGuardado(error);
+}
+
+export async function actualizarContenido(
+  contenido: ContenidoBiblioteca,
+  oracionOriginal: OracionBiblioteca,
+  datos: DatosEdicion,
+  oracion: OracionBiblioteca,
+) {
+  const cambiaTipo = oracion.id !== oracionOriginal.id;
+  const campo = campoVariante(oracion);
+  const movidos: { bucket: string; desde: string; hacia: string }[] = [];
+  const carpeta = `${oracion.seccion}/${oracion.clave}`;
+  const rutas = { pdf: contenido.pdfPath, imagen: contenido.imagenPath };
+
+  try {
+    if (cambiaTipo) {
+      for (const [bucket, ruta, clave] of [
+        [BUCKET_PDF, contenido.pdfPath, 'pdf'],
+        [BUCKET_IMAGENES, contenido.imagenPath, 'imagen'],
+      ] as const) {
+        if (!ruta) continue;
+        const hacia = `${carpeta}/${nombreDeArchivo(ruta)}`;
+        await moverArchivo(bucket, ruta, hacia);
+        movidos.push({ bucket, desde: ruta, hacia });
+        rutas[clave] = hacia;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('contenidos')
+      .update({
+        oracion_id: oracion.id,
+        nombre: datos.nombre.trim(),
+        numero: campo === 'numero' || campo === 'diaConsagracion' ? Number(datos.numero) : null,
+        fecha: campo === 'fecha' ? datos.fecha : null,
+        pdf_path: rutas.pdf,
+        imagen_path: rutas.imagen,
+      })
+      .eq('id', contenido.id)
+      .select('id');
+
+    if (error) throw errorDeEdicion(error);
+    if (!data?.length) throw new ErrorContenido(MENSAJES_CONTENIDO.noExiste);
+  } catch (error) {
+    for (const { bucket, desde, hacia } of movidos.reverse()) {
+      await supabase.storage.from(bucket).move(hacia, desde).catch(() => null);
+    }
+    if (error instanceof ErrorContenido) throw error;
+    throw new ErrorContenido(MENSAJES_CONTENIDO.sinConexion);
+  }
+}
+
+export async function diasAsignados(contenidoId: number, desde = fechaDeHoyEnBogota()) {
+  const consultas = ['calendario_contenidos', 'asignaciones_oficios'].map(tabla =>
+    supabase.from(tabla).select('fecha').eq('contenido_id', contenidoId).gte('fecha', desde),
+  );
+  const respuestas = await Promise.all(consultas);
+  const fallo = respuestas.find(r => r.error);
+  if (fallo?.error) {
+    throw new ErrorContenido(
+      esErrorDeRed(fallo.error.message)
+        ? MENSAJES_CONTENIDO.sinConexion
+        : MENSAJES_CONTENIDO.revisarCalendario,
+    );
+  }
+  const fechas = respuestas.flatMap(r => (r.data ?? []).map(fila => fila.fecha as string));
+  return [...new Set(fechas)].sort();
+}
+
+export async function eliminarContenido(contenido: ContenidoBiblioteca) {
+  const { data, error } = await supabase
+    .from('contenidos')
+    .delete()
+    .eq('id', contenido.id)
+    .select('id');
+
+  if (error) {
+    if (error.code === '42501') throw new ErrorContenido(MENSAJES_CONTENIDO.sinPermisos);
+    if (esErrorDeRed(error.message)) throw new ErrorContenido(MENSAJES_CONTENIDO.sinConexion);
+    throw new ErrorContenido(MENSAJES_CONTENIDO.eliminar);
+  }
+  if (!data?.length) throw new ErrorContenido(MENSAJES_CONTENIDO.noExiste);
+
+  const archivos: [string, string][] = [];
+  if (contenido.pdfPath) archivos.push([BUCKET_PDF, contenido.pdfPath]);
+  if (contenido.imagenPath) archivos.push([BUCKET_IMAGENES, contenido.imagenPath]);
+  const resultados = await Promise.all(
+    archivos.map(([bucket, ruta]) =>
+      supabase.storage
+        .from(bucket)
+        .remove([ruta])
+        .then(({ data, error: errorArchivo }) => !errorArchivo && (data?.length ?? 0) > 0)
+        .catch(() => false),
+    ),
+  );
+  return { archivosBorrados: resultados.every(Boolean) };
 }
