@@ -35,25 +35,26 @@ Cada tarjeta muestra el total de contenidos de su tipo. Ese total sale de una so
 - **Vista previa:**
   - si tiene imagen, la imagen;
   - si tiene video, la miniatura del video (`i.ytimg.com/vi/<id>/hqdefault.jpg`) con el ícono de reproducir;
-  - si no, un recuadro con el ícono del formato.
+  - si no, o si el archivo no se puede cargar, un recuadro con el ícono del formato.
 
   Al hacer clic se abre el archivo o el video en otra pestaña.
-- Los PDF y las imágenes usan URL firmadas de 1 hora del bucket `contenidos`. Ese bucket se crea en T-035;
-  mientras no exista, la vista previa muestra el recuadro de respaldo y Storage responde `400`, que la pantalla
-  maneja. Si T-035 usa otro nombre, solo cambia `BUCKET_CONTENIDOS` en `biblioteca.ts`.
+- Los PDF se firman en el bucket `contenidos-pdf` y las imágenes en `contenidos-imagenes` (T-035), con URL de
+  1 hora. Ver [Storage](../Base%20de%20datos/Storage%20(T-018).md).
 
 ## Paginación
 
 - 10 contenidos por oración en los acordeones y 12 imágenes en la cuadrícula del widget, con `.range()` y
   `count: 'exact'`.
-- Orden: `fecha` descendente, luego `numero` y luego `creado_en`.
+- Orden: `fecha` descendente, luego `numero`, luego `creado_en` y por último `id`. El `id` hace que el orden
+  sea único: sin él, los contenidos creados en el mismo instante (por ejemplo, en una carga en bloque) podían
+  cambiar de lugar entre consultas y repetirse o saltarse entre páginas.
 - Si se pide una página que ya no existe (`PGRST103`), se vuelve a la página 1.
 - Cada acordeón carga sus contenidos al abrirse.
 
 ## Relación con otras tareas
 
 - Búsqueda y filtros: hechos en T-034 (HU-39). Ver [Búsqueda de la biblioteca (T-034)](B%C3%BAsqueda%20de%20la%20biblioteca%20(T-034).md).
-- Bucket de contenidos: T-035.
+- Buckets de contenidos: hechos en T-035.
 - Subir: T-036 (HU-40).
 - Editar y eliminar: T-037 (HU-41).
 
@@ -66,10 +67,13 @@ usando los datos de ejemplo del prototipo hasta T-042.
 2. Cargar contenidos de prueba con `docker exec -i <contenedor supabase_db_…> psql -U postgres`. Usar los tres
    formatos, 12 contenidos en Jaculatorias, 4 sábados de Hora de María, las fijas en su límite y 14 imágenes del
    widget.
-3. Revisar:
+3. Para ver vistas previas reales, subir un PDF y una imagen como administrador a la ruta
+   `<seccion>/<clave>/<archivo>` de su bucket y poner esas rutas en `pdf_path` e `imagen_path`.
+4. Revisar:
    - los totales de las tarjetas;
    - la paginación de Jaculatorias (1–10 y 11–12) y del widget (1–12 y 13–14);
-   - las miniaturas de YouTube;
+   - las miniaturas de YouTube y las vistas previas de imagen;
    - las fijas al final con su aviso de límite;
    - las oraciones sin contenido con su estado vacío.
-4. Al terminar, borrar los contenidos de prueba (`delete from public.contenidos;` en la base local).
+5. Al terminar, borrar los archivos de prueba con la API de Storage y los contenidos de prueba
+   (`delete from public.contenidos;` en la base local).
