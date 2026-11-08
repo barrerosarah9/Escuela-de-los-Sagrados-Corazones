@@ -275,3 +275,12 @@ a.vista-previa:hover{border-color:var(--cherry);box-shadow:0 0 0 2px rgba(161,30
 .contenido-archivos .vista-previa-grande{border:1px solid var(--line);border-radius:11px;height:170px}
 .aviso-asignado{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--cream);color:#5c4710;font-size:12.5px;line-height:1.45}
 .aviso-asignado b{font-size:13px;color:#4a3909}
+.assignment-list .fila-calendario{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--line);min-height:58px}
+.fila-calendario>span:first-child{display:flex;align-items:center;gap:9px}
+.fila-calendario>span:first-child i{width:23px;height:23px;border-radius:7px;background:var(--pale);display:grid;place-items:center;color:var(--navy);font-size:9px;font-style:normal}
+.fila-calendario>span:first-child b{font-size:11px}
+.fila-calendario-nota{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;color:var(--warm)}
+.fila-calendario-nota .btn{min-height:32px;padding:6px 11px;font-size:11px}
+.fila-calendario.desactivada{opacity:.55}
+.calendario-faltan{margin:16px 0 0;padding:10px 13px;border-radius:9px;background:var(--cream);color:#5c4710;font-size:11.5px;line-height:1.45}
+.calendario-cambios{align-self:center;font-size:11px;color:#856814;font-weight:600}
