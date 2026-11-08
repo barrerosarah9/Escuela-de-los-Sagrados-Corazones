@@ -281,6 +281,8 @@ a.vista-previa:hover{border-color:var(--cherry);box-shadow:0 0 0 2px rgba(161,30
 .fila-calendario>span:first-child b{font-size:11px}
 .fila-calendario-nota{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:10px;color:var(--warm)}
 .fila-calendario-nota .btn{min-height:32px;padding:6px 11px;font-size:11px}
-.fila-calendario.desactivada{opacity:.55}
+.calendario-widget-vista{display:flex;justify-content:flex-end;padding:12px 0 14px;border-bottom:1px solid var(--line)}
+.calendario-widget-vista img{width:calc(50% - 7px);max-height:220px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:var(--pale)}
+.calendario-widget-vista span{width:calc(50% - 7px);font-size:10px;color:var(--warm)}
 .calendario-faltan{margin:16px 0 0;padding:10px 13px;border-radius:9px;background:var(--cream);color:#5c4710;font-size:11.5px;line-height:1.45}
 .calendario-cambios{align-self:center;font-size:11px;color:#856814;font-weight:600}

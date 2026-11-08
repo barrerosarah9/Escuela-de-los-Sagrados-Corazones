@@ -7,7 +7,7 @@ import { eliminarComentario, listarComentarios, type Comentario } from "./lib/co
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { buscarContenidos, CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, LARGO_MAXIMO_BUSQUEDA, listarContenidos, listarOracionesBiblioteca, normalizarBusqueda, RESULTADOS_POR_PAGINA, type ContenidoBiblioteca, type FiltrosBusqueda, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type PaginaResultados, type SeccionBiblioteca } from "./lib/biblioteca";
 import { actualizarContenido, campoVariante, diasAsignados, eliminarContenido, ErrorContenido, esWidget, FORMATO_PDF, FORMATOS_IMAGEN, guardarContenido, LARGO_MAXIMO_NOMBRE, nombreSugerido, oracionLlena, siguienteNumero, tieneErrores as tieneErroresContenido, validarArchivo, validarContenido, validarEdicion, type ErroresContenido } from "./lib/contenidos";
-import { bloqueoDelDia, buscarHoraMaria, cargarDias, esSabado, faltantes, guardarDia, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oracionesRequeridas, type DiaCalendario, type EstadoDia, type OpcionContenido, type OracionesCalendario, type Selecciones } from "./lib/calendario";
+import { bloqueoDelDia, buscarHoraMaria, cargarDias, esSabado, faltantes, guardarDia, listarImagenesWidget, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oracionesRequeridas, urlVistaPrevia, type DiaCalendario, type EstadoDia, type OpcionContenido, type OracionesCalendario, type Selecciones } from "./lib/calendario";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -1207,6 +1207,9 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
   const [pestana, setPestana] = useState<PestanaCalendario>("hora");
   const [biblioteca, setBiblioteca] = useState<OracionBiblioteca[] | null>(null);
   const [subiendo, setSubiendo] = useState(false);
+  const [imagenesWidget, setImagenesWidget] = useState<OpcionContenido[]>([]);
+  const [vistaWidget, setVistaWidget] = useState<{ ruta: string; url: string } | null>(null);
+  const [errorVista, setErrorVista] = useState("");
   const fechas = diasDeLaSemana(lunes);
   const dia = dias.find(d => d.fecha === fecha) ?? null;
   const bloqueo = dia ? bloqueoDelDia(dia, hoy) : null;
@@ -1218,6 +1221,8 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
   const semana = semanaIso(lunes);
   const faltanBorrador = oraciones ? faltantes(fecha, selecciones, oraciones) : [];
   const requeridas = oraciones ? oracionesRequeridas(fecha, oraciones) : [];
+  const imagenElegida = oraciones ? imagenesWidget.find(imagen => imagen.id === selecciones[oraciones.widget.id]) ?? null : null;
+  const rutaElegida = imagenElegida?.imagenPath ?? null;
   const hayCambios = !!dia && requeridas.some(oracion => (selecciones[oracion.id] ?? null) !== (dia.asignaciones[oracion.id] ?? null));
   const pestanas: { id: PestanaCalendario; label: string }[] = [
     { id: "hora", label: "Santificar cada hora del día" },
@@ -1232,9 +1237,10 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
     setCargando(true);
     listarOracionesCalendario()
       .then(async lista => {
-        const mapa = await listarOpcionesVariables(lista);
+        const [mapa, imagenes] = await Promise.all([listarOpcionesVariables(lista), listarImagenesWidget(lista)]);
         if (!activo) return;
         setOpciones(mapa);
+        setImagenesWidget(imagenes);
         setOraciones(lista);
       })
       .catch((e: Error) => { if (activo) { setErrorCarga(e.message); setCargando(false); } });
@@ -1256,6 +1262,16 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
   useEffect(() => { setSelecciones(dia ? { ...dia.asignaciones } : {}); }, [dia]);
 
   useEffect(() => { setErrorGuardado(""); }, [fecha]);
+
+  useEffect(() => {
+    setErrorVista("");
+    if (!rutaElegida) { setVistaWidget(null); return; }
+    let activo = true;
+    urlVistaPrevia(rutaElegida)
+      .then(url => { if (activo) setVistaWidget({ ruta: rutaElegida, url }); })
+      .catch((e: Error) => { if (activo) { setVistaWidget(null); setErrorVista(e.message); } });
+    return () => { activo = false; };
+  }, [rutaElegida]);
 
   useEffect(() => {
     if (!oraciones || !sabado) { setHoraMaria(null); return; }
@@ -1355,7 +1371,8 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
                   return <label key={oracion.id}><span><i>{i + 1}</i><b>{oracion.nombre}</b></span><select value={selecciones[oracion.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oracion.id, e.target.value)}><option value="">{lista.length ? "Seleccionar desde la biblioteca…" : "Sin contenidos en la biblioteca"}</option>{lista.map(opcion => <option key={opcion.id} value={opcion.id}>{etiquetaOpcion(opcion)}</option>)}</select></label>;
                 })}
                 {sabado && filaHoraMaria(oraciones.variables.length + 1)}
-                <div className="fila-calendario desactivada"><span><i>{oraciones.variables.length + (sabado ? 2 : 1)}</i><b>Imagen del widget</b></span><span className="fila-calendario-nota">Disponible pronto</span></div>
+                <label><span><i>{oraciones.variables.length + (sabado ? 2 : 1)}</i><b>{oraciones.widget.nombre}</b></span><select value={selecciones[oraciones.widget.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oraciones.widget.id, e.target.value)}><option value="">{imagenesWidget.length ? "Seleccionar imagen del widget…" : "Sin imágenes del widget en la biblioteca"}</option>{imagenesWidget.map(imagen => <option key={imagen.id} value={imagen.id}>{imagen.nombre}</option>)}</select></label>
+                {rutaElegida && <div className="calendario-widget-vista">{vistaWidget?.ruta === rutaElegida ? <img src={vistaWidget.url} alt={`Vista previa de ${imagenElegida?.nombre ?? "la imagen del widget"}`}/> : <span>{errorVista || "Cargando vista previa…"}</span>}</div>}
                 {ORACIONES_FIJAS.map(nombre => <div className="fixed-row" key={nombre}><span><i/><b>{nombre}</b></span><span>Se edita en la Biblioteca</span></div>)}
                 <p className="fixed-note"><i/>Oración fija: se muestra todos los días y no se programa en el calendario.</p>
                 {!bloqueo && faltanBorrador.length > 0 && <p className="calendario-faltan">{faltanBorrador.length === requeridas.length ? "No has elegido ninguna oración: si guardas así, el día queda vacío." : `Falta${faltanBorrador.length === 1 ? "" : "n"}: ${faltanBorrador.map(o => o.nombre).join(", ")}. Si guardas así, el día queda incompleto.`}</p>}
