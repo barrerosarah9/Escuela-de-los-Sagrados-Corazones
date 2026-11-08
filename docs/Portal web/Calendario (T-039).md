@@ -11,7 +11,7 @@ Historia: HU-42 · Caso de uso: CU-22 · Tarea de fase: F3-10 · Issue: #39.
 | `portal-admin/src/lib/calendario.ts` | Catálogo de las oraciones del calendario, opciones de la biblioteca, estado de cada día, bloqueo y guardado. |
 | `portal-admin/src/App.tsx` (`Calendar`) | Semana navegable, vista de día con los selectores y Hora de María del sábado. |
 | `portal-admin/src/App.tsx` (`FormularioContenido`) | Nueva prop opcional `fechaInicial` para abrir «Subir contenido» con la fecha del sábado puesta. |
-| `portal-admin/src/index.css` | Filas de Hora de María y del widget, aviso de oraciones faltantes y «Cambios sin guardar». |
+| `portal-admin/src/index.css` | Fila de Hora de María, aviso de oraciones faltantes y «Cambios sin guardar». |
 
 Se quitaron los datos de ejemplo del prototipo que solo usaba el calendario (`libraryGroups`, `fixedLimits`,
 `widgetImages` y sus tipos).
@@ -19,16 +19,20 @@ Se quitaron los datos de ejemplo del prototipo que solo usaba el calendario (`li
 No hay migraciones nuevas: `calendario_dias`, `calendario_contenidos` y `asignaciones_oficios`, el *trigger*
 `validar_asignacion_calendario` y las llaves foráneas compuestas vienen de T-007, y las políticas «administrar» de T-008.
 
+La imagen del widget de cada día se agregó en T-040: ver
+[Imagen del widget en el calendario (T-040)](Imagen%20del%20widget%20en%20el%20calendario%20(T-040).md).
+
 ## Dónde se guarda cada cosa
 
 | Qué | Tabla |
 | --- | --- |
 | El día (y si ya se publicó, `publicado_en`) | `calendario_dias` |
-| Jaculatorias, Evangelio de Hoy, Santo Rosario de Hoy, Diario Espiritual y Hora de reparación | `calendario_contenidos` |
+| Jaculatorias, Evangelio de Hoy, Santo Rosario de Hoy, Diario Espiritual, Hora de reparación e imagen del widget (T-040) | `calendario_contenidos` |
 | Hora de María del sábado (es un oficio de la semana) | `asignaciones_oficios` |
 
 Las oraciones se buscan por `clave` (`jaculatorias`, `evangelio-hoy`, `santo-rosario-hoy`, `diario-espiritual`,
-`hora-reparacion` y `hora-maria`), no por `id`, para que funcione igual en la base local y en producción.
+`hora-reparacion`, `hora-maria` e `imagen-widget`), no por `id`, para que funcione igual en la base local y en
+producción.
 
 ## Comportamiento
 
@@ -39,12 +43,12 @@ Las oraciones se buscan por `clave` (`jaculatorias`, `evangelio-hoy`, `santo-ros
   | Estado | Cuándo |
   | --- | --- |
   | Publicado (azul) | `calendario_dias.publicado_en` tiene valor |
-  | Completo (verde) | Tiene las cinco oraciones y, si es sábado, la Hora de María |
+  | Completo (verde) | Tiene las cinco oraciones, la imagen del widget y, si es sábado, la Hora de María |
   | Incompleto (amarillo) | Tiene algunas, pero no todas las requeridas |
   | Vacío (gris) | No tiene ninguna de las requeridas |
 
-  El estado se calcula al leer, a partir de las asignaciones. La imagen del widget (T-040) y los oficios de la semana,
-  del mes y del año (T-057) todavía no cuentan.
+  El estado se calcula al leer, a partir de las asignaciones. Los oficios de la semana, del mes y del año (T-057)
+  todavía no cuentan.
 - **Selectores:** cada oración solo lista contenidos de la biblioteca de esa oración (una consulta a `contenidos`
   filtrada por `oracion_id`). La base también lo exige con la llave `(contenido_id, oracion_id)`.
 - **Hora de María:** solo los sábados aparece la fila. Como la biblioteca identifica cada Hora de María por la fecha de
@@ -59,15 +63,13 @@ Las oraciones se buscan por `clave` (`jaculatorias`, `evangelio-hoy`, `santo-ros
 - **Días publicados o pasados:** solo de consulta. Se ven los contenidos asignados, pero los selectores están
   deshabilitados y no hay botón de guardar. Bloquear también los días pasados es una decisión de esta tarea, igual
   que en la Oración en vivo (T-031): cambiarlos no tendría efecto en la app.
-- Las pestañas de la semana, el mes y el año, la imagen del widget y copiar días siguen con «Disponible pronto»
-  (T-040, T-041 y T-057).
+- Las pestañas de la semana, el mes y el año, y copiar días, siguen con «Disponible pronto» (T-041 y T-057).
 
 ## Pendiente fuera de esta tarea
 
 - **Bloqueo en la base de datos** de los días publicados: hoy lo garantiza el portal; T-057 lo agrega como regla de la
   base para que tampoco se pueda desde la API.
-- El estado completo con imagen del widget y oficios (T-040 y T-057), y la publicación diaria que llena `publicado_en`
-  (T-043 y T-058).
+- El estado completo con los oficios (T-057) y la publicación diaria que llena `publicado_en` (T-043 y T-058).
 
 ## Cómo probar en local
 
@@ -79,7 +81,7 @@ Las oraciones se buscan por `clave` (`jaculatorias`, `evangelio-hoy`, `santo-ros
    - un día futuro con `publicado_en = now()` y una asignación.
 4. `cd portal-admin && npm run dev` y, en **Calendario**, revisar:
    - los selectores solo muestran su oración (no aparece Hora Santa);
-   - guardar 3 de 5 → Incompleto; las 5 → Completo; quitar una → Incompleto;
+   - guardar 3 de 5 → Incompleto; las 5 y la imagen del widget → Completo; quitar una → Incompleto;
    - el sábado con Hora de María: sin ella queda Incompleto y con ella Completo;
    - el sábado sin Hora de María: «Subir» abre el panel con la fecha puesta y la deja elegida;
    - el día publicado y un día pasado: solo consulta;

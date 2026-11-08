@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { FormatoContenido } from './biblioteca';
+import { BUCKET_IMAGENES, type FormatoContenido } from './biblioteca';
 import { diaSemanaIso, fechaDeHoyEnBogota, sumarDias } from './oracion-en-vivo';
 
 export const CLAVES_ORACIONES_VARIABLES = [
@@ -10,11 +10,14 @@ export const CLAVES_ORACIONES_VARIABLES = [
   'hora-reparacion',
 ];
 export const CLAVE_HORA_MARIA = 'hora-maria';
+export const CLAVE_WIDGET = 'imagen-widget';
 export const SABADO = 6;
+const DURACION_VISTA_PREVIA = 60 * 60;
 
 export const MENSAJES_CALENDARIO = {
   carga: 'No pudimos cargar el calendario. Inténtalo de nuevo.',
   cargaOpciones: 'No pudimos cargar los contenidos de la biblioteca. Inténtalo de nuevo.',
+  vistaPrevia: 'No pudimos cargar la vista previa de la imagen.',
   catalogo: 'Faltan oraciones del calendario en la base de datos. Revisa las migraciones.',
   publicado: 'Este día ya se publicó y no se puede modificar.',
   pasado: 'Este día ya pasó y no se puede modificar.',
@@ -39,6 +42,7 @@ export type OracionCalendario = {
 export type OracionesCalendario = {
   variables: OracionCalendario[];
   horaMaria: OracionCalendario;
+  widget: OracionCalendario;
 };
 
 export type OpcionContenido = {
@@ -46,6 +50,7 @@ export type OpcionContenido = {
   nombre: string;
   numero: number | null;
   fecha: string | null;
+  imagenPath: string | null;
   formatos: FormatoContenido[];
 };
 
@@ -144,6 +149,7 @@ function aOpcion(fila: FilaContenido): OpcionContenido {
     nombre: fila.nombre,
     numero: fila.numero,
     fecha: fila.fecha,
+    imagenPath: fila.imagen_path,
     formatos: formatosDe(fila),
   };
 }
@@ -152,8 +158,14 @@ export function esSabado(fecha: string) {
   return diaSemanaIso(fecha) === SABADO;
 }
 
+export function oracionesDiarias(oraciones: OracionesCalendario) {
+  return [...oraciones.variables, oraciones.widget];
+}
+
 export function oracionesRequeridas(fecha: string, oraciones: OracionesCalendario) {
-  return esSabado(fecha) ? [...oraciones.variables, oraciones.horaMaria] : oraciones.variables;
+  return esSabado(fecha)
+    ? [...oraciones.variables, oraciones.horaMaria, oraciones.widget]
+    : oracionesDiarias(oraciones);
 }
 
 export function faltantes(
@@ -188,7 +200,7 @@ export async function listarOracionesCalendario(): Promise<OracionesCalendario> 
     const { data, error } = await supabase
       .from('oraciones')
       .select('id, clave, nombre, orden')
-      .in('clave', [...CLAVES_ORACIONES_VARIABLES, CLAVE_HORA_MARIA]);
+      .in('clave', [...CLAVES_ORACIONES_VARIABLES, CLAVE_HORA_MARIA, CLAVE_WIDGET]);
 
     if (error) throw errorDeCarga(error, MENSAJES_CALENDARIO.carga);
 
@@ -197,12 +209,13 @@ export async function listarOracionesCalendario(): Promise<OracionesCalendario> 
       filas.find(fila => fila.clave === clave),
     );
     const horaMaria = filas.find(fila => fila.clave === CLAVE_HORA_MARIA);
+    const widget = filas.find(fila => fila.clave === CLAVE_WIDGET);
 
-    if (variables.some(oracion => !oracion) || !horaMaria) {
+    if (variables.some(oracion => !oracion) || !horaMaria || !widget) {
       throw new Error(MENSAJES_CALENDARIO.catalogo);
     }
 
-    return { variables: variables as OracionCalendario[], horaMaria };
+    return { variables: variables as OracionCalendario[], horaMaria, widget };
   } catch (error) {
     relanzar(error, MENSAJES_CALENDARIO.carga);
   }
@@ -233,6 +246,32 @@ export async function listarOpcionesVariables(
   } catch (error) {
     relanzar(error, MENSAJES_CALENDARIO.cargaOpciones);
   }
+}
+
+export async function listarImagenesWidget(
+  oraciones: OracionesCalendario,
+): Promise<OpcionContenido[]> {
+  try {
+    const { data, error } = await supabase
+      .from('contenidos')
+      .select(COLUMNAS_CONTENIDO)
+      .eq('oracion_id', oraciones.widget.id)
+      .not('imagen_path', 'is', null)
+      .order('creado_en', { ascending: false });
+
+    if (error) throw errorDeCarga(error, MENSAJES_CALENDARIO.cargaOpciones);
+    return ((data ?? []) as FilaContenido[]).map(aOpcion);
+  } catch (error) {
+    relanzar(error, MENSAJES_CALENDARIO.cargaOpciones);
+  }
+}
+
+export async function urlVistaPrevia(imagenPath: string) {
+  const { data, error } = await supabase.storage
+    .from(BUCKET_IMAGENES)
+    .createSignedUrl(imagenPath, DURACION_VISTA_PREVIA);
+  if (error || !data?.signedUrl) throw new Error(MENSAJES_CALENDARIO.vistaPrevia);
+  return data.signedUrl;
 }
 
 export async function buscarHoraMaria(
@@ -274,7 +313,7 @@ export async function cargarDias(
         .lte('fecha', hasta)
         .in(
           'oracion_id',
-          oraciones.variables.map(oracion => oracion.id),
+          oracionesDiarias(oraciones).map(oracion => oracion.id),
         ),
       supabase
         .from('asignaciones_oficios')
@@ -327,11 +366,11 @@ export async function guardarDia(
     const bloqueo = bloqueoDelDia(actual);
     if (bloqueo) return { estado: 'bloqueado', mensaje: bloqueo, dia: actual };
 
-    const variables = oraciones.variables.map(oracion => oracion.id);
-    const asignar = variables
+    const diarias = oracionesDiarias(oraciones).map(oracion => oracion.id);
+    const asignar = diarias
       .filter(id => !!selecciones[id])
       .map(id => ({ fecha, oracion_id: id, contenido_id: selecciones[id] as number }));
-    const quitar = variables.filter(id => !selecciones[id]);
+    const quitar = diarias.filter(id => !selecciones[id]);
     const sabado = esSabado(fecha);
     const horaMaria = sabado ? (selecciones[oraciones.horaMaria.id] ?? null) : null;
 
