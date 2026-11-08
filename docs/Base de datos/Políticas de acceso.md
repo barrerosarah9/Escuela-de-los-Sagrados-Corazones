@@ -35,7 +35,8 @@ update public.perfiles set rol = 'administrador' where correo = '<correo>';
 | `asistencias` | Ve, confirma y cancela solo las suyas | Ve todas |
 | `oraciones` (catálogo) | Lee | Lee (el catálogo solo cambia con migraciones) |
 | `contenidos` | Lee | Lee y escribe |
-| `calendario_dias`, `calendario_contenidos`, `asignaciones_oficios` | Lee solo días publicados (`publicado_en` no nulo) | Lee y escribe todo |
+| `calendario_dias`, `calendario_contenidos`, `asignaciones_oficios` | Lee solo el día vigente (`calendario_dias.vigente`, desde T-043) | Lee y escribe todo |
+| `alertas_publicacion` | — | Lee (las escribe `publicar_dia`, T-043) |
 | `dias_oracion` | Ve los suyos; registra solo el día de hoy (hora de Bogotá) | Ve todos |
 | `eventos` | Registra los suyos solo si `analitica_uso = true`; no lee | Lee |
 | `tokens_dispositivo` | Lee y escribe solo los suyos | — |
@@ -54,6 +55,13 @@ a su racha.
 Donaciones mensuales, pedidos, ítems de pedido y transacciones se crean y actualizan desde Edge Functions
 (cálculo de precios, cobros y webhook de Wompi). Así el usuario no puede alterar montos ni estados de pago.
 El borrado de cuenta (CU-06) también va por Edge Function.
+
+## Lo que escribe pg_cron
+
+La publicación diaria (T-043) la hace la función `publicar_dia`, que corre con pg_cron como `postgres`. Es
+`security definer` y no la pueden ejecutar `anon` ni `authenticated`: ni la app ni el portal pueden publicar un
+día, marcarlo vigente ni registrar alertas. Detalle en
+[Publicación diaria (T-043)](Publicaci%C3%B3n%20diaria%20(T-043).md).
 
 ## Vistas
 
@@ -74,4 +82,5 @@ npx supabase test db --linked
 ```
 
 Las pruebas crean tres cuentas de prueba (usuario A, usuario B y administrador) dentro de una transacción
-que se revierte al final.
+que se revierte al final. Las políticas del calendario y de las alertas se prueban en
+`supabase/tests/database/publicacion_diaria.test.sql`.
