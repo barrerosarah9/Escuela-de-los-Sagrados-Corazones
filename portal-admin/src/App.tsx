@@ -7,6 +7,7 @@ import { eliminarComentario, listarComentarios, type Comentario } from "./lib/co
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { buscarContenidos, CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, LARGO_MAXIMO_BUSQUEDA, listarContenidos, listarOracionesBiblioteca, normalizarBusqueda, RESULTADOS_POR_PAGINA, type ContenidoBiblioteca, type FiltrosBusqueda, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type PaginaResultados, type SeccionBiblioteca } from "./lib/biblioteca";
 import { actualizarContenido, campoVariante, diasAsignados, eliminarContenido, ErrorContenido, esWidget, FORMATO_PDF, FORMATOS_IMAGEN, guardarContenido, LARGO_MAXIMO_NOMBRE, nombreSugerido, oracionLlena, siguienteNumero, tieneErrores as tieneErroresContenido, validarArchivo, validarContenido, validarEdicion, type ErroresContenido } from "./lib/contenidos";
+import { bloqueoDelDia, buscarHoraMaria, cargarDias, esSabado, faltantes, guardarDia, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oracionesRequeridas, type DiaCalendario, type EstadoDia, type OpcionContenido, type OracionesCalendario, type Selecciones } from "./lib/calendario";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -618,67 +619,6 @@ function LivePrayer({ admin, notify }: { admin: Administrador; notify: (s: strin
 }
 
 type LibraryTab = "Santifica el día" | "Santifica la semana" | "Santifica el mes" | "Santifica el año" | "Imágenes del widget";
-type LibraryFormat = "PDF" | "YouTube" | "Imagen";
-type LibraryItem = { name: string; format?: LibraryFormat; formats?: LibraryFormat[]; youtube?: string; date?: string; filled: boolean; variant?: number };
-type LibraryGroup = { title: string; target: number; items: LibraryItem[]; children?: LibraryGroup[] };
-
-const makeVariants = (prefix: string, total: number, filled: number): LibraryItem[] =>
-  Array.from({ length: total }, (_, i) => ({
-    name: `${prefix} ${i + 1}`,
-    format: i < filled ? (i % 4 === 1 ? "YouTube" : "PDF") : undefined,
-    date: i < filled ? `${12 - (i % 8)} oct. 2026` : undefined,
-    filled: i < filled,
-    variant: i + 1,
-  }));
-
-const libraryGroups: Record<Exclude<LibraryTab, "Imágenes del widget">, LibraryGroup[]> = {
-  "Santifica el día": [
-    { title: "Jaculatorias", target: 4, items: makeVariants("Jaculatorias", 4, 3) },
-    { title: "Evangelio de Hoy", target: 4, items: makeVariants("Evangelio de Hoy", 4, 4) },
-    { title: "Santo Rosario de Hoy", target: 4, items: makeVariants("Santo Rosario de Hoy", 4, 3) },
-    { title: "Diario Espiritual", target: 4, items: makeVariants("Diario Espiritual", 4, 2) },
-    { title: "Hora de reparación", target: 4, items: makeVariants("Hora de reparación", 4, 3) },
-    { title: "Oración para iniciar el día", target: 2, items: [{ name: "Oración para iniciar el día 1", format: "YouTube", date: "12 oct. 2026", filled: true }, { name: "Oración para iniciar el día 2", format: "PDF", date: "12 oct. 2026", filled: true }] },
-    { title: "Divina Cita", target: 1, items: [{ name: "Divina Cita", format: "PDF", date: "10 oct. 2026", filled: true }] },
-    { title: "Oración de la Noche", target: 1, items: [{ name: "Oración de la Noche", format: "YouTube", date: "8 oct. 2026", filled: true }] },
-  ],
-  "Santifica la semana": [
-    { title: "Lunes · Almas del purgatorio", target: 7, items: makeVariants("Lunes", 7, 7) },
-    { title: "Martes · Santos Ángeles", target: 3, items: makeVariants("Martes", 3, 3) },
-    { title: "Miércoles · Lirios de San José", target: 16, items: makeVariants("Miércoles", 16, 14) },
-    { title: "Jueves · Hora Santa", target: 12, items: makeVariants("Jueves", 12, 10) },
-    { title: "Viernes · Viacrucis", target: 3, items: makeVariants("Viernes", 3, 3) },
-    { title: "Sábado · Hora de María", target: 3, items: [
-      { name: "Hora de María · 3 de octubre", format: "PDF", date: "1 oct. 2026", filled: true },
-      { name: "Hora de María · 10 de octubre", format: "PDF", date: "7 oct. 2026", filled: true },
-      { name: "Hora de María · 17 de octubre", filled: false },
-    ] },
-    { title: "Domingo · 7 Dolores y Gozos de San José", target: 7, items: makeVariants("Domingo", 7, 6) },
-  ],
-  "Santifica el mes": [
-    { title: "Primer jueves", target: 12, items: makeVariants("Primer jueves", 12, 11) },
-    { title: "Primer viernes", target: 18, items: [], children: [
-      { title: "Viernes diurnos", target: 9, items: makeVariants("Viernes diurno", 9, 8) },
-      { title: "Vigilias de reparación", target: 9, items: makeVariants("Vigilia", 9, 7) },
-    ] },
-    { title: "Primer sábado", target: 5, items: makeVariants("Primer sábado", 5, 5) },
-  ],
-  "Santifica el año": [
-    { title: "Consagración a San José", target: 30, items: makeVariants("Día", 30, 30) },
-    { title: "Consagración a la Santísima Virgen María", target: 30, items: makeVariants("Día", 30, 30) },
-    { title: "Consagración al Sagrado Corazón de Jesús", target: 30, items: makeVariants("Día", 30, 30) },
-  ],
-};
-
-const fixedLimits: Record<string, number> = { "Oración para iniciar el día": 2, "Divina Cita": 1, "Oración de la Noche": 1 };
-
-const widgetImages: LibraryItem[] = [
-  { name: "Nuestra Señora del Rosario", format: "Imagen", date: "7 oct. 2026", filled: true },
-  { name: "Sagrado Corazón de Jesús", format: "Imagen", date: "2 oct. 2026", filled: true },
-  { name: "San José y el Niño Jesús", format: "Imagen", date: "28 sep. 2026", filled: true },
-  { name: "Ángeles adoradores", format: "Imagen", date: "22 sep. 2026", filled: true },
-  { name: "Jesús Eucaristía", format: "Imagen", date: "18 sep. 2026", filled: true },
-];
 
 const libraryMeta: Record<LibraryTab, { slug: string; description: string; icon: string }> = {
   "Santifica el día": { slug: "santifica-el-dia", description: "Oraciones fijas y variables de cada día", icon: "clock" },
@@ -904,7 +844,7 @@ function CampoArchivo({ etiqueta, ayuda, icono, aceptar, archivo, error, onElegi
   </div>;
 }
 
-function FormularioContenido({ oraciones, oracionInicial, seccion, admin, onCerrar, onGuardado }: { oraciones: OracionBiblioteca[]; oracionInicial: number | null; seccion: SeccionBiblioteca | null; admin: Administrador; onCerrar: () => void; onGuardado: (oracion: OracionBiblioteca) => void }) {
+function FormularioContenido({ oraciones, oracionInicial, seccion, fechaInicial = "", admin, onCerrar, onGuardado }: { oraciones: OracionBiblioteca[]; oracionInicial: number | null; seccion: SeccionBiblioteca | null; fechaInicial?: string; admin: Administrador; onCerrar: () => void; onGuardado: (oracion: OracionBiblioteca) => void }) {
   const tiposVisibles = seccion ? [tipoDeSeccion[seccion]] : tiposBiblioteca;
   const [oracionId, setOracionId] = useState<number | null>(oracionInicial);
   const [nombre, setNombre] = useState("");
@@ -932,17 +872,17 @@ function FormularioContenido({ oraciones, oracionInicial, seccion, admin, onCerr
 
   useEffect(() => {
     let vigente = true;
-    setNumero("");
-    setFecha("");
     const actual = oraciones.find(o => o.id === oracionId);
     const tipoCampo = campoVariante(actual);
+    setNumero("");
+    setFecha(tipoCampo === "fecha" ? fechaInicial : "");
     if (actual && (tipoCampo === "numero" || tipoCampo === "diaConsagracion")) {
       siguienteNumero(actual.id).then(siguiente => {
         if (vigente) setNumero(String(tipoCampo === "diaConsagracion" ? Math.min(siguiente, 30) : siguiente));
       });
     }
     return () => { vigente = false; };
-  }, [oracionId, oraciones]);
+  }, [oracionId, oraciones, fechaInicial]);
 
   useEffect(() => {
     if (!nombreEditado) setNombre(nombreSugerido(oraciones.find(o => o.id === oracionId), numero, fecha));
@@ -1234,67 +1174,199 @@ function Library({ admin, notify, active, onOpen, onBack }: { admin: Administrad
   </>;
 }
 
-function Calendar({ notify }: { notify: (s:string)=>void }) {
-  type CalTab = "hora" | "semana" | "mes" | "ano";
-  const [selected, setSelected] = useState(3);
-  const [offset, setOffset] = useState(0);
-  const months = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-  const labels = ["LUN","MAR","MIÉ","JUE","VIE","SÁB","DOM"];
-  const monday = new Date(2026, 9, 5 + offset * 7);
-  const days = labels.map((label, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return { label, date: d }; });
-  const sunday = days[6].date;
-  const isoWeek = (d: Date) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const n = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - n); const y = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t.getTime() - y.getTime()) / 86400000 + 1) / 7); };
-  const range = monday.getMonth() === sunday.getMonth() ? `${monday.getDate()} — ${sunday.getDate()} de ${months[sunday.getMonth()]}` : `${monday.getDate()} de ${months[monday.getMonth()].slice(0, 3)} — ${sunday.getDate()} de ${months[sunday.getMonth()].slice(0, 3)}`;
-  const [picks, setPicks] = useState<Record<string, string>>({});
-  const [saved, setSaved] = useState<Record<string, "Completo" | "Incompleto">>({});
-  const dayKey = (i: number) => { const d = days[i].date; return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
-  const status = (i: number): "Completo" | "Incompleto" | "Vacío" => saved[dayKey(i)] ?? (offset < 0 ? "Completo" : offset > 0 ? "Vacío" : i < 3 ? "Completo" : i < 6 ? "Incompleto" : "Vacío");
-  const published = (i: number) => offset < 0 || (offset === 0 && i < 3);
-  const tone = (st: string) => st === "Completo" ? "success" : st === "Incompleto" ? "warning" : "neutral";
-  const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-  const selDate = days[selected].date;
-  const [copy, setCopy] = useState(false);
-  const [tab, setTab] = useState<CalTab>("hora");
-  const [chosen, setChosen] = useState<Record<string, boolean>>({});
-  const weekday = labels[selected];
-  const monthly = weekday === "JUE" || weekday === "VIE" || weekday === "SÁB";
-  const activeTab: CalTab = tab === "mes" && !monthly ? "hora" : tab;
-  const options = (items: LibraryItem[]) => items.filter(item => item.filled).map(item => item.name);
-  const weekGroup = libraryGroups["Santifica la semana"][selected];
-  const monthGroups: LibraryGroup[] = weekday === "JUE" ? [libraryGroups["Santifica el mes"][0]] : weekday === "VIE" ? libraryGroups["Santifica el mes"][1].children || [] : weekday === "SÁB" ? [libraryGroups["Santifica el mes"][2]] : [];
-  const tabs: { id: CalTab; label: string }[] = [
+type PestanaCalendario = "hora" | "semana" | "mes" | "ano";
+const ORACIONES_FIJAS = ["Oración para iniciar el día", "Divina Cita", "Oración de la Noche"];
+const ESTADOS_DIA: EstadoDia[] = ["publicado", "completo", "incompleto", "vacio"];
+const tonoEstado: Record<EstadoDia, "info" | "success" | "warning" | "neutral"> = { publicado: "info", completo: "success", incompleto: "warning", vacio: "neutral" };
+const textoEstado: Record<EstadoDia, string> = { publicado: "Publicado", completo: "Completo", incompleto: "Incompleto", vacio: "Vacío" };
+const mayuscula = (texto: string) => texto.charAt(0).toUpperCase() + texto.slice(1);
+const semanaIso = (fecha: string) => {
+  const jueves = sumarDias(fecha, 4 - diaSemanaIso(fecha));
+  const [anio] = partesDeFecha(jueves);
+  const dias = (Date.parse(`${jueves}T00:00:00Z`) - Date.parse(`${anio}-01-01T00:00:00Z`)) / 86_400_000;
+  return { numero: Math.floor(dias / 7) + 1, anio };
+};
+const etiquetaOpcion = (opcion: OpcionContenido) => opcion.formatos.length ? `${opcion.nombre} · ${opcion.formatos.join(", ")}` : opcion.nombre;
+const textoFaltan = (n: number) => n === 1 ? "falta 1 oración" : `faltan ${n} oraciones`;
+
+function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
+  const hoy = useMemo(() => fechaDeHoyEnBogota(), []);
+  const [lunes, setLunes] = useState(() => lunesDeLaSemana(hoy));
+  const [fecha, setFecha] = useState(hoy);
+  const [oraciones, setOraciones] = useState<OracionesCalendario | null>(null);
+  const [opciones, setOpciones] = useState<Record<number, OpcionContenido[]>>({});
+  const [dias, setDias] = useState<DiaCalendario[]>([]);
+  const [selecciones, setSelecciones] = useState<Selecciones>({});
+  const [horaMaria, setHoraMaria] = useState<OpcionContenido | null>(null);
+  const [buscandoHoraMaria, setBuscandoHoraMaria] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState("");
+  const [recarga, setRecarga] = useState(0);
+  const [errorGuardado, setErrorGuardado] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [pestana, setPestana] = useState<PestanaCalendario>("hora");
+  const [biblioteca, setBiblioteca] = useState<OracionBiblioteca[] | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const fechas = diasDeLaSemana(lunes);
+  const dia = dias.find(d => d.fecha === fecha) ?? null;
+  const bloqueo = dia ? bloqueoDelDia(dia, hoy) : null;
+  const sabado = esSabado(fecha);
+  const diaSemana = diaSemanaIso(fecha);
+  const mensual = diaSemana >= 4 && diaSemana <= 6;
+  const pestanaActiva: PestanaCalendario = pestana === "mes" && !mensual ? "hora" : pestana;
+  const [anio, mes] = partesDeFecha(fecha);
+  const semana = semanaIso(lunes);
+  const faltanBorrador = oraciones ? faltantes(fecha, selecciones, oraciones) : [];
+  const requeridas = oraciones ? oracionesRequeridas(fecha, oraciones) : [];
+  const hayCambios = !!dia && requeridas.some(oracion => (selecciones[oracion.id] ?? null) !== (dia.asignaciones[oracion.id] ?? null));
+  const pestanas: { id: PestanaCalendario; label: string }[] = [
     { id: "hora", label: "Santificar cada hora del día" },
     { id: "semana", label: "Santificar cada día de la semana" },
-    ...(monthly ? [{ id: "mes" as CalTab, label: "Santificar cada mes" }] : []),
+    ...(mensual ? [{ id: "mes" as PestanaCalendario, label: "Santificar cada mes" }] : []),
     { id: "ano", label: "Santificar cada año" },
   ];
-  const pickKey = (title: string) => `${dayKey(selected)}|${title}`;
-  const Row = ({ index, title, items, placeholder }: { index: number; title: string; items: string[]; placeholder: string }) =>
-    <label><span><i>{index}</i><b>{title}</b></span><select value={picks[pickKey(title)] || ""} onChange={e => setPicks({ ...picks, [pickKey(title)]: e.target.value })}><option value="">{placeholder}</option>{items.map(item => <option key={item}>{item}</option>)}</select></label>;
-  const saveDay = () => {
-    const required = [...dayRows.map(r => r.name), "Imagen del widget", weekGroup.title.split(" · ")[1]];
-    const missing = required.filter(t => !picks[pickKey(t)]);
-    const result = missing.length ? "Incompleto" : "Completo";
-    setSaved({ ...saved, [dayKey(selected)]: result });
-    notify(missing.length ? `Programación guardada · faltan ${missing.length} ${missing.length === 1 ? "oración" : "oraciones"}, el día queda incompleto` : "Programación guardada · día completo");
+
+  useEffect(() => {
+    let activo = true;
+    setErrorCarga("");
+    setCargando(true);
+    listarOracionesCalendario()
+      .then(async lista => {
+        const mapa = await listarOpcionesVariables(lista);
+        if (!activo) return;
+        setOpciones(mapa);
+        setOraciones(lista);
+      })
+      .catch((e: Error) => { if (activo) { setErrorCarga(e.message); setCargando(false); } });
+    return () => { activo = false; };
+  }, [recarga]);
+
+  useEffect(() => {
+    if (!oraciones) return;
+    let activo = true;
+    setCargando(true);
+    setErrorCarga("");
+    cargarDias(lunes, sumarDias(lunes, 6), oraciones)
+      .then(lista => { if (activo) setDias(lista); })
+      .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
+      .finally(() => { if (activo) setCargando(false); });
+    return () => { activo = false; };
+  }, [oraciones, lunes]);
+
+  useEffect(() => { setSelecciones(dia ? { ...dia.asignaciones } : {}); }, [dia]);
+
+  useEffect(() => { setErrorGuardado(""); }, [fecha]);
+
+  useEffect(() => {
+    if (!oraciones || !sabado) { setHoraMaria(null); return; }
+    let activo = true;
+    setBuscandoHoraMaria(true);
+    buscarHoraMaria(fecha, oraciones)
+      .then(opcion => { if (activo) setHoraMaria(opcion); })
+      .catch((e: Error) => { if (activo) { setHoraMaria(null); setErrorGuardado(e.message); } })
+      .finally(() => { if (activo) setBuscandoHoraMaria(false); });
+    return () => { activo = false; };
+  }, [oraciones, fecha, sabado]);
+
+  const irASemana = (nuevoLunes: string) => {
+    setLunes(nuevoLunes);
+    setFecha(diasDeLaSemana(nuevoLunes).includes(hoy) ? hoy : nuevoLunes);
   };
-  const dayRows = ["Jaculatorias","Evangelio de Hoy","Santo Rosario de Hoy","Diario Espiritual","Hora de reparación"].map(name => ({ name, items: options(libraryGroups["Santifica el día"].find(g => g.title === name)?.items || []) }));
-  return <><PageHead title="Calendario" subtitle="Programa el contenido diario de la app." action={<div className="head-actions"><Button variant="secondary" onClick={()=>setCopy(true)}>Copiar día o semana</Button><Button variant="secondary" icon="calendar">{capital(months[selDate.getMonth()])} {selDate.getFullYear()}</Button></div>}/>
+
+  const elegir = (oracionId: number, valor: string) => setSelecciones(actuales => ({ ...actuales, [oracionId]: valor ? Number(valor) : null }));
+
+  const guardar = async () => {
+    if (!oraciones || !dia || bloqueo) return;
+    setGuardando(true);
+    setErrorGuardado("");
+    const resultado = await guardarDia(fecha, selecciones, oraciones, admin.id);
+    setGuardando(false);
+    if (resultado.estado === "error") { setErrorGuardado(resultado.mensaje); return; }
+    setDias(actuales => actuales.map(d => d.fecha === resultado.dia.fecha ? resultado.dia : d));
+    if (resultado.estado === "bloqueado") { setErrorGuardado(resultado.mensaje); return; }
+    const faltan = faltantes(fecha, resultado.dia.asignaciones, oraciones).length;
+    notify(resultado.dia.estado === "completo" ? "Programación guardada · día completo" : resultado.dia.estado === "vacio" ? "Programación guardada · el día quedó vacío" : `Programación guardada · ${textoFaltan(faltan)}, el día queda incompleto`);
+  };
+
+  const abrirSubida = async () => {
+    setErrorGuardado("");
+    try {
+      const lista = biblioteca ?? await listarOracionesBiblioteca();
+      setBiblioteca(lista);
+      setSubiendo(true);
+    } catch (e) {
+      setErrorGuardado(e instanceof Error ? e.message : MENSAJES_CALENDARIO.cargaOpciones);
+    }
+  };
+
+  const alSubir = async () => {
+    setSubiendo(false);
+    if (!oraciones) return;
+    try {
+      const opcion = await buscarHoraMaria(fecha, oraciones);
+      setHoraMaria(opcion);
+      if (opcion) {
+        setSelecciones(actuales => ({ ...actuales, [oraciones.horaMaria.id]: opcion.id }));
+        notify("Hora de María subida · guarda la programación para asignarla");
+      } else {
+        notify("Contenido guardado en la Biblioteca para otra fecha");
+      }
+    } catch (e) {
+      setErrorGuardado(e instanceof Error ? e.message : MENSAJES_CALENDARIO.cargaOpciones);
+    }
+  };
+
+  const filaHoraMaria = (numero: number) => {
+    if (!oraciones) return null;
+    const id = oraciones.horaMaria.id;
+    const titulo = <span><i>{numero}</i><b>{oraciones.horaMaria.nombre}</b></span>;
+    if (buscandoHoraMaria) return <div className="fila-calendario">{titulo}<span className="fila-calendario-nota">Buscando la Hora de María de este sábado…</span></div>;
+    if (horaMaria) return <label>{titulo}<select value={selecciones[id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(id, e.target.value)}><option value="">Sin asignar</option><option value={horaMaria.id}>{etiquetaOpcion(horaMaria)}</option></select></label>;
+    return <div className="fila-calendario">{titulo}<span className="fila-calendario-nota">{bloqueo ? "Sin Hora de María para este sábado." : <>No hay Hora de María para este sábado.<Button variant="secondary" icon="upload" disabled={guardando} onClick={abrirSubida}>Subir</Button></>}</span></div>;
+  };
+
+  return <>
+    <PageHead title="Calendario" subtitle="Programa el contenido diario de la app."/>
     <div className="calendar-layout">
-      <Card className="calendar-card"><div className="calendar-head"><button aria-label="Semana anterior" onClick={()=>setOffset(offset-1)}><Icon name="arrow"/></button><div><div className="card-title">{range}</div><span>Semana {isoWeek(monday)} de {sunday.getFullYear()}{offset!==0&&<> · <button className="link-today" onClick={()=>setOffset(0)}>Volver a esta semana</button></>}</span></div><button aria-label="Semana siguiente" className="flip" onClick={()=>setOffset(offset+1)}><Icon name="arrow"/></button></div><div className="cal-week">{days.map((d,i)=><button key={d.label} className={selected===i?"active":""} onClick={()=>setSelected(i)}><small>{d.label}</small><b>{d.date.getDate()}</b><i className={`cal-dot dot-${published(i)?"info":tone(status(i))}`} title={published(i)?"Publicado":status(i)}/></button>)}</div><div className="cal-legend">{([["info","Publicado"],[tone("Completo"),"Completo"],[tone("Incompleto"),"Incompleto"],[tone("Vacío"),"Vacío"]] as const).map(([t,l])=><span key={l}><i className={`cal-dot dot-${t}`}/>{l}</span>)}</div></Card>
+      <Card className="calendar-card">
+        <div className="calendar-head">
+          <button aria-label="Semana anterior" onClick={() => irASemana(sumarDias(lunes, -7))}><Icon name="arrow"/></button>
+          <div><div className="card-title">{rangoDeSemana(lunes)}</div><span>Semana {semana.numero} de {semana.anio}{!fechas.includes(hoy) && <> · <button className="link-today" onClick={() => irASemana(lunesDeLaSemana(hoy))}>Volver a esta semana</button></>}</span></div>
+          <button aria-label="Semana siguiente" className="flip" onClick={() => irASemana(sumarDias(lunes, 7))}><Icon name="arrow"/></button>
+        </div>
+        <div className="cal-week">{fechas.map((f, i) => {
+          const estado = dias.find(d => d.fecha === f)?.estado;
+          return <button key={f} className={f === fecha ? "active" : ""} onClick={() => setFecha(f)}><small>{dayLabels[i]}</small><b>{partesDeFecha(f)[2]}</b><i className={`cal-dot dot-${estado ? tonoEstado[estado] : "neutral"}`} title={estado ? textoEstado[estado] : "Cargando"}/></button>;
+        })}</div>
+        <div className="cal-legend">{ESTADOS_DIA.map(estado => <span key={estado}><i className={`cal-dot dot-${tonoEstado[estado]}`}/>{textoEstado[estado]}</span>)}</div>
+      </Card>
       <Card className="day-editor">
-        <div className="card-head"><div><div className="eyebrow">{capital(months[selDate.getMonth()])} {selDate.getFullYear()}</div><div className="card-title">{labels[selected].toLowerCase()}, {selDate.getDate()} de {months[selDate.getMonth()]}</div></div><Badge tone={tone(status(selected))}>{status(selected)}</Badge></div>
-        <div className="calendar-tabs">{tabs.map(t=><button key={t.id} className={activeTab===t.id?"active":""} onClick={()=>setTab(t.id)}>{t.label}</button>)}</div>
-        {published(selected)?<div className="locked-note"><Icon name="check"/><div><b>Este día ya se publicó</b><p>Puedes consultar su contenido, pero ya no es posible modificarlo.</p></div></div>:<div className="assignment-list">
-          {activeTab==="hora"&&<>{dayRows.map((row,i)=><Row key={row.name} index={i+1} title={row.name} items={row.items} placeholder="Seleccionar desde la biblioteca…"/>)}<Row index={6} title="Imagen del widget" items={widgetImages.map(item=>item.name)} placeholder="Seleccionar desde la biblioteca…"/>{Object.keys(fixedLimits).map(name=><div className="fixed-row" key={name}><span><i/><b>{name}</b></span><span>{options(libraryGroups["Santifica el día"].find(g=>g.title===name)?.items||[]).join(" y ")||"Sin contenido en la biblioteca"}</span></div>)}<p className="fixed-note"><i/>Oración fija: se muestra todos los días y no se programa en el calendario.</p></>}
-          {activeTab==="semana"&&<><p className="tab-note">Oficio de este día: <b>{weekGroup.title.split(" · ")[1]}</b>. Solo aparecen las variantes subidas a la biblioteca.</p><Row key={weekGroup.title} index={1} title={weekGroup.title.split(" · ")[1]} items={options(weekGroup.items)} placeholder="Seleccionar variante…"/></>}
-          {activeTab==="mes"&&<><p className="tab-note">Asigna un oficio solo si este día es el primer {weekday==="JUE"?"jueves":weekday==="VIE"?"viernes":"sábado"} del mes. Si no lo es, déjalo vacío.</p>{monthGroups.map((group,i)=><Row key={group.title} index={i+1} title={group.title} items={options(group.items)} placeholder="Sin asignar"/>)}</>}
-          {activeTab==="ano"&&<><p className="tab-note">Selecciona las consagraciones que corresponden a este día. Puedes dejarlas todas sin seleccionar.</p>{libraryGroups["Santifica el año"].map(group=>{const on=!!chosen[group.title];return <div className="consecration-row" key={group.title}><label className="check"><input type="checkbox" checked={on} onChange={()=>setChosen({...chosen,[group.title]:!on})}/><b>{group.title}</b></label>{on&&<select defaultValue=""><option value="">Seleccionar día…</option>{options(group.items).map(item=><option key={item}>{item}</option>)}</select>}</div>})}</>}
-          <div className="form-actions"><Button onClick={saveDay}>Guardar programación</Button></div>
-        </div>}
+        <div className="card-head"><div><div className="eyebrow">{mayuscula(monthNames[mes - 1])} {anio}</div><div className="card-title">{mayuscula(fechaLarga(fecha))}</div></div>{dia && !cargando && <Badge tone={tonoEstado[dia.estado]}>{textoEstado[dia.estado]}</Badge>}</div>
+        <div className="calendar-tabs">{pestanas.map(p => <button key={p.id} className={pestanaActiva === p.id ? "active" : ""} onClick={() => setPestana(p.id)}>{p.label}</button>)}</div>
+        {bloqueo && <div className="locked-note"><Icon name="check"/><div><b>{dia?.publicado ? "Este día ya se publicó" : "Este día ya pasó"}</b><p>Puedes consultar su contenido, pero ya no es posible modificarlo.</p></div></div>}
+        {errorCarga
+          ? <div className="form-error" role="alert">{errorCarga} <button className="link-today" onClick={() => setRecarga(r => r + 1)}>Reintentar</button></div>
+          : cargando || !oraciones || !dia
+            ? <p className="tab-note">Cargando la programación…</p>
+            : <div className="assignment-list">
+              {pestanaActiva === "hora" && <>
+                {oraciones.variables.map((oracion, i) => {
+                  const lista = opciones[oracion.id] ?? [];
+                  return <label key={oracion.id}><span><i>{i + 1}</i><b>{oracion.nombre}</b></span><select value={selecciones[oracion.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oracion.id, e.target.value)}><option value="">{lista.length ? "Seleccionar desde la biblioteca…" : "Sin contenidos en la biblioteca"}</option>{lista.map(opcion => <option key={opcion.id} value={opcion.id}>{etiquetaOpcion(opcion)}</option>)}</select></label>;
+                })}
+                {sabado && filaHoraMaria(oraciones.variables.length + 1)}
+                <div className="fila-calendario desactivada"><span><i>{oraciones.variables.length + (sabado ? 2 : 1)}</i><b>Imagen del widget</b></span><span className="fila-calendario-nota">Disponible pronto</span></div>
+                {ORACIONES_FIJAS.map(nombre => <div className="fixed-row" key={nombre}><span><i/><b>{nombre}</b></span><span>Se edita en la Biblioteca</span></div>)}
+                <p className="fixed-note"><i/>Oración fija: se muestra todos los días y no se programa en el calendario.</p>
+                {!bloqueo && faltanBorrador.length > 0 && <p className="calendario-faltan">{faltanBorrador.length === requeridas.length ? "No has elegido ninguna oración: si guardas así, el día queda vacío." : `Falta${faltanBorrador.length === 1 ? "" : "n"}: ${faltanBorrador.map(o => o.nombre).join(", ")}. Si guardas así, el día queda incompleto.`}</p>}
+                {errorGuardado && <div className="form-error" role="alert">{errorGuardado}</div>}
+                {!bloqueo && <div className="form-actions">{hayCambios && <span className="calendario-cambios">Cambios sin guardar</span>}<Button disabled={guardando || !hayCambios} onClick={guardar}>{guardando ? "Guardando…" : "Guardar programación"}</Button></div>}
+              </>}
+              {pestanaActiva !== "hora" && <p className="tab-note">{sabado && pestanaActiva === "semana" ? <>La <b>Hora de María</b> de este sábado se asigna en «Santificar cada hora del día».</> : "Disponible pronto."}</p>}
+            </div>}
       </Card>
     </div>
-    {copy&&<Modal title="Copiar día o semana" onClose={()=>setCopy(false)} action="Copiar contenido" onConfirm={()=>notify("Contenido copiado correctamente")}><p className="modal-text">Elige qué quieres copiar y la fecha de destino. El contenido existente no se reemplazará sin avisarte.</p><div className="segmented"><button className="active">Este día</button><button>Semana completa</button></div><Input label="Fecha de destino" type="date" value="2026-10-12"/></Modal>}
+    {subiendo && biblioteca && oraciones && <FormularioContenido oraciones={biblioteca} oracionInicial={oraciones.horaMaria.id} seccion="semana" fechaInicial={fecha} admin={admin} onCerrar={() => setSubiendo(false)} onGuardado={alSubir}/>}
   </>;
 }
 
@@ -1481,7 +1553,7 @@ function PortalApp() {
     if(section==="Publicaciones") return admin ? <Publications admin={admin} notify={notify}/> : null;
     if(section==="Oración en vivo") return admin ? <LivePrayer admin={admin} notify={notify}/> : null;
     if(section==="Biblioteca") return admin ? <Library admin={admin} notify={notify} active={libraryType} onOpen={tab=>navigate(`/biblioteca/${libraryMeta[tab].slug}`)} onBack={()=>navigate("/biblioteca")}/> : null;
-    if(section==="Calendario") return <Calendar notify={notify}/>;
+    if(section==="Calendario") return admin ? <Calendar admin={admin} notify={notify}/> : null;
     if(section==="Usuarios") return <Users confirm={confirm} notify={notify}/>;
     if(section==="Donaciones") return <Donations/>;
     if(section==="Tienda") return <Books confirm={confirm} notify={notify}/>;
