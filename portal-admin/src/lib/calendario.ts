@@ -1,6 +1,12 @@
 import { supabase } from './supabase';
 import { BUCKET_IMAGENES, type FormatoContenido } from './biblioteca';
-import { diaSemanaIso, fechaDeHoyEnBogota, sumarDias } from './oracion-en-vivo';
+import {
+  diaSemanaIso,
+  esFechaValida,
+  fechaDeHoyEnBogota,
+  lunesDeLaSemana,
+  sumarDias,
+} from './oracion-en-vivo';
 
 export const CLAVES_ORACIONES_VARIABLES = [
   'jaculatorias',
@@ -28,6 +34,13 @@ export const MENSAJES_CALENDARIO = {
   sinPermisos: 'Tu cuenta no tiene permisos para programar el calendario. Vuelve a iniciar sesión.',
   sinConexion: 'No hay conexión a internet. Revisa tu red e inténtalo de nuevo.',
   desconocido: 'No pudimos guardar la programación. Inténtalo de nuevo en unos minutos.',
+  destinoVacio: 'Elige la fecha de destino.',
+  mismaFecha: 'Elige una fecha distinta a la de origen.',
+  mismaSemana: 'Elige una semana distinta a la de origen.',
+  origenVacio:
+    'No hay nada que copiar: el origen no tiene oraciones variables ni imagen del widget asignadas.',
+  destinoBloqueado:
+    'No se puede copiar: los días de destino ya se publicaron o ya pasaron.',
 };
 
 export type EstadoDia = 'publicado' | 'completo' | 'incompleto' | 'vacio';
@@ -63,9 +76,17 @@ export type DiaCalendario = {
 
 export type Selecciones = Record<number, number | null>;
 
+export type ModoCopia = 'dia' | 'semana';
+
 export type ResultadoGuardadoDia =
   | { estado: 'ok'; dia: DiaCalendario }
   | { estado: 'bloqueado'; mensaje: string; dia: DiaCalendario }
+  | { estado: 'error'; mensaje: string };
+
+export type ResultadoCopia =
+  | { estado: 'ok'; copiados: string[]; omitidos: string[] }
+  | { estado: 'confirmar'; conContenido: string[]; omitidos: string[] }
+  | { estado: 'invalida'; mensaje: string }
   | { estado: 'error'; mensaje: string };
 
 type FilaOracion = {
@@ -415,6 +436,93 @@ export async function guardarDia(
 
     const [dia] = await cargarDias(fecha, fecha, oraciones);
     return { estado: 'ok', dia };
+  } catch (error) {
+    return {
+      estado: 'error',
+      mensaje: esMensajeConocido(error) ? error.message : MENSAJES_CALENDARIO.desconocido,
+    };
+  }
+}
+
+function asignacionesDiarias(dia: DiaCalendario, oraciones: OracionesCalendario) {
+  return oracionesDiarias(oraciones)
+    .filter(oracion => !!dia.asignaciones[oracion.id])
+    .map(oracion => ({ oracion_id: oracion.id, contenido_id: dia.asignaciones[oracion.id] }));
+}
+
+export async function copiarProgramacion(
+  modo: ModoCopia,
+  origen: string,
+  destino: string,
+  oraciones: OracionesCalendario,
+  adminId: string,
+  reemplazar: boolean,
+): Promise<ResultadoCopia> {
+  if (!esFechaValida(destino)) return { estado: 'invalida', mensaje: MENSAJES_CALENDARIO.destinoVacio };
+
+  const inicioOrigen = modo === 'dia' ? origen : lunesDeLaSemana(origen);
+  const inicioDestino = modo === 'dia' ? destino : lunesDeLaSemana(destino);
+  if (inicioOrigen === inicioDestino) {
+    return {
+      estado: 'invalida',
+      mensaje: modo === 'dia' ? MENSAJES_CALENDARIO.mismaFecha : MENSAJES_CALENDARIO.mismaSemana,
+    };
+  }
+  const largo = modo === 'dia' ? 0 : 6;
+
+  try {
+    const [diasOrigen, diasDestino] = await Promise.all([
+      cargarDias(inicioOrigen, sumarDias(inicioOrigen, largo), oraciones),
+      cargarDias(inicioDestino, sumarDias(inicioDestino, largo), oraciones),
+    ]);
+
+    const pares = diasOrigen
+      .map((dia, i) => ({ origen: dia, destino: diasDestino[i] }))
+      .filter(par => asignacionesDiarias(par.origen, oraciones).length > 0);
+    if (!pares.length) return { estado: 'invalida', mensaje: MENSAJES_CALENDARIO.origenVacio };
+
+    const omitidos = pares.filter(par => bloqueoDelDia(par.destino)).map(par => par.destino.fecha);
+    const disponibles = pares.filter(par => !bloqueoDelDia(par.destino));
+    if (!disponibles.length) {
+      return { estado: 'invalida', mensaje: MENSAJES_CALENDARIO.destinoBloqueado };
+    }
+
+    const conContenido = disponibles
+      .filter(par => asignacionesDiarias(par.destino, oraciones).length > 0)
+      .map(par => par.destino.fecha);
+    if (conContenido.length && !reemplazar) return { estado: 'confirmar', conContenido, omitidos };
+
+    const fechas = disponibles.map(par => par.destino.fecha);
+    const { error: errorDias } = await supabase
+      .from('calendario_dias')
+      .upsert(
+        fechas.map(fecha => ({ fecha, creado_por: adminId })),
+        { onConflict: 'fecha', ignoreDuplicates: true },
+      );
+    if (errorDias) return { estado: 'error', mensaje: mensajeDeGuardado(errorDias) };
+
+    const filas = disponibles.flatMap(par =>
+      asignacionesDiarias(par.origen, oraciones).map(fila => ({ fecha: par.destino.fecha, ...fila })),
+    );
+    const { error: errorFilas } = await supabase
+      .from('calendario_contenidos')
+      .upsert(filas, { onConflict: 'fecha,oracion_id' });
+    if (errorFilas) return { estado: 'error', mensaje: mensajeDeGuardado(errorFilas) };
+
+    for (const par of disponibles) {
+      const quitar = oracionesDiarias(oraciones)
+        .map(oracion => oracion.id)
+        .filter(id => !par.origen.asignaciones[id]);
+      if (!quitar.length) continue;
+      const { error } = await supabase
+        .from('calendario_contenidos')
+        .delete()
+        .eq('fecha', par.destino.fecha)
+        .in('oracion_id', quitar);
+      if (error) return { estado: 'error', mensaje: mensajeDeGuardado(error) };
+    }
+
+    return { estado: 'ok', copiados: fechas, omitidos };
   } catch (error) {
     return {
       estado: 'error',

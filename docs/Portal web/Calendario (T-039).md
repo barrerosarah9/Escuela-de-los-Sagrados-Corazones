@@ -20,7 +20,8 @@ No hay migraciones nuevas: `calendario_dias`, `calendario_contenidos` y `asignac
 `validar_asignacion_calendario` y las llaves foráneas compuestas vienen de T-007, y las políticas «administrar» de T-008.
 
 La imagen del widget de cada día se agregó en T-040: ver
-[Imagen del widget en el calendario (T-040)](Imagen%20del%20widget%20en%20el%20calendario%20(T-040).md).
+[Imagen del widget en el calendario (T-040)](Imagen%20del%20widget%20en%20el%20calendario%20(T-040).md). Copiar un
+día o una semana se agregó en T-041: ver [Copiar días y semanas (T-041)](Copiar%20d%C3%ADas%20y%20semanas%20(T-041).md).
 
 ## Dónde se guarda cada cosa
 
@@ -63,7 +64,7 @@ producción.
 - **Días publicados o pasados:** solo de consulta. Se ven los contenidos asignados, pero los selectores están
   deshabilitados y no hay botón de guardar. Bloquear también los días pasados es una decisión de esta tarea, igual
   que en la Oración en vivo (T-031): cambiarlos no tendría efecto en la app.
-- Las pestañas de la semana, el mes y el año, y copiar días, siguen con «Disponible pronto» (T-041 y T-057).
+- Las pestañas de la semana, el mes y el año siguen con «Disponible pronto» (T-057).
 
 ## Pendiente fuera de esta tarea
 

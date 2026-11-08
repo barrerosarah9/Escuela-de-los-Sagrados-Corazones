@@ -7,7 +7,7 @@ import { eliminarComentario, listarComentarios, type Comentario } from "./lib/co
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { buscarContenidos, CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, LARGO_MAXIMO_BUSQUEDA, listarContenidos, listarOracionesBiblioteca, normalizarBusqueda, RESULTADOS_POR_PAGINA, type ContenidoBiblioteca, type FiltrosBusqueda, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type PaginaResultados, type SeccionBiblioteca } from "./lib/biblioteca";
 import { actualizarContenido, campoVariante, diasAsignados, eliminarContenido, ErrorContenido, esWidget, FORMATO_PDF, FORMATOS_IMAGEN, guardarContenido, LARGO_MAXIMO_NOMBRE, nombreSugerido, oracionLlena, siguienteNumero, tieneErrores as tieneErroresContenido, validarArchivo, validarContenido, validarEdicion, type ErroresContenido } from "./lib/contenidos";
-import { bloqueoDelDia, buscarHoraMaria, cargarDias, esSabado, faltantes, guardarDia, listarImagenesWidget, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oracionesRequeridas, urlVistaPrevia, type DiaCalendario, type EstadoDia, type OpcionContenido, type OracionesCalendario, type Selecciones } from "./lib/calendario";
+import { bloqueoDelDia, buscarHoraMaria, cargarDias, esSabado, faltantes, guardarDia, listarImagenesWidget, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oracionesRequeridas, urlVistaPrevia, copiarProgramacion, type DiaCalendario, type ModoCopia, type EstadoDia, type OpcionContenido, type OracionesCalendario, type Selecciones } from "./lib/calendario";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -1189,6 +1189,57 @@ const semanaIso = (fecha: string) => {
 const etiquetaOpcion = (opcion: OpcionContenido) => opcion.formatos.length ? `${opcion.nombre} · ${opcion.formatos.join(", ")}` : opcion.nombre;
 const textoFaltan = (n: number) => n === 1 ? "falta 1 oración" : `faltan ${n} oraciones`;
 
+const listaDeFechas = (fechas: string[]) => fechas.map(fecha => fechaLarga(fecha)).join(", ");
+
+function CopiarProgramacion({ fecha, oraciones, admin, onCerrar, onCopiado }: { fecha: string; oraciones: OracionesCalendario; admin: Administrador; onCerrar: () => void; onCopiado: (copiados: string[], omitidos: string[]) => void }) {
+  const [modo, setModo] = useState<ModoCopia>("dia");
+  const [destino, setDestino] = useState(() => sumarDias(fecha, 1));
+  const [pendiente, setPendiente] = useState<{ conContenido: string[]; omitidos: string[] } | null>(null);
+  const [error, setError] = useState("");
+  const [copiando, setCopiando] = useState(false);
+  const semanaDestino = modo === "semana" && esFechaValida(destino) ? rangoDeSemana(lunesDeLaSemana(destino)) : null;
+
+  const cambiarModo = (nuevo: ModoCopia) => {
+    setModo(nuevo);
+    setDestino(sumarDias(fecha, nuevo === "dia" ? 1 : 7));
+    setPendiente(null);
+    setError("");
+  };
+
+  const cambiarDestino = (valor: string) => {
+    setDestino(valor);
+    setPendiente(null);
+    setError("");
+  };
+
+  const copiar = async () => {
+    setCopiando(true);
+    setError("");
+    const resultado = await copiarProgramacion(modo, fecha, destino, oraciones, admin.id, !!pendiente);
+    setCopiando(false);
+    if (resultado.estado === "confirmar") { setPendiente({ conContenido: resultado.conContenido, omitidos: resultado.omitidos }); return; }
+    if (resultado.estado !== "ok") { setError(resultado.mensaje); return; }
+    onCopiado(resultado.copiados, resultado.omitidos);
+  };
+
+  return <div className="modal-backdrop" onMouseDown={() => { if (!copiando) onCerrar(); }}>
+    <div className="modal" role="dialog" aria-labelledby="titulo-copiar" onMouseDown={e => e.stopPropagation()}>
+      <div className="modal-top"><div className="modal-title" id="titulo-copiar">Copiar día o semana</div><button className="icon-btn" aria-label="Cerrar" disabled={copiando} onClick={onCerrar}><Icon name="close"/></button></div>
+      <div className="modal-content">
+        <div className="segmented"><button className={modo === "dia" ? "active" : ""} disabled={copiando} onClick={() => cambiarModo("dia")}>Este día</button><button className={modo === "semana" ? "active" : ""} disabled={copiando} onClick={() => cambiarModo("semana")}>Semana completa</button></div>
+        <p className="copia-origen">Origen: <b>{modo === "dia" ? mayuscula(fechaLarga(fecha)) : `semana del ${rangoDeSemana(lunesDeLaSemana(fecha))}`}</b></p>
+        <Input label={modo === "dia" ? "Fecha de destino" : "Cualquier día de la semana de destino"} type="date" value={destino} onChange={cambiarDestino}/>
+        {semanaDestino && <p className="copia-nota">Se copiará a la semana del <b>{semanaDestino}</b>, cada día en el mismo día de la semana. Los días vacíos del origen no cambian nada.</p>}
+        <p className="copia-nota">Se copian las cinco oraciones variables y la imagen del widget. La Hora de María no se copia porque pertenece a su sábado.</p>
+        {pendiente && <div className="aviso-asignado"><b>{pendiente.conContenido.length === 1 ? "Este destino ya tiene programación" : `${pendiente.conContenido.length} días de destino ya tienen programación`}</b><span>{listaDeFechas(pendiente.conContenido)}.</span><span>Si continúas, se reemplazará por la del origen.</span></div>}
+        {pendiente && pendiente.omitidos.length > 0 && <p className="copia-nota">Se omitirán por estar publicados o pasados: {listaDeFechas(pendiente.omitidos)}.</p>}
+        {error && <div className="form-error" role="alert">{error}</div>}
+      </div>
+      <div className="modal-actions"><Button variant="secondary" disabled={copiando} onClick={onCerrar}>Volver</Button><Button disabled={copiando} onClick={copiar}>{copiando ? "Copiando…" : pendiente ? "Reemplazar y copiar" : "Copiar contenido"}</Button></div>
+    </div>
+  </div>;
+}
+
 function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
   const hoy = useMemo(() => fechaDeHoyEnBogota(), []);
   const [lunes, setLunes] = useState(() => lunesDeLaSemana(hoy));
@@ -1207,6 +1258,8 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
   const [pestana, setPestana] = useState<PestanaCalendario>("hora");
   const [biblioteca, setBiblioteca] = useState<OracionBiblioteca[] | null>(null);
   const [subiendo, setSubiendo] = useState(false);
+  const [copiaAbierta, setCopiaAbierta] = useState(false);
+  const [recargaDias, setRecargaDias] = useState(0);
   const [imagenesWidget, setImagenesWidget] = useState<OpcionContenido[]>([]);
   const [vistaWidget, setVistaWidget] = useState<{ ruta: string; url: string } | null>(null);
   const [errorVista, setErrorVista] = useState("");
@@ -1257,7 +1310,7 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
       .catch((e: Error) => { if (activo) setErrorCarga(e.message); })
       .finally(() => { if (activo) setCargando(false); });
     return () => { activo = false; };
-  }, [oraciones, lunes]);
+  }, [oraciones, lunes, recargaDias]);
 
   useEffect(() => { setSelecciones(dia ? { ...dia.asignaciones } : {}); }, [dia]);
 
@@ -1332,6 +1385,15 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
     }
   };
 
+  const alCopiar = (copiados: string[], omitidos: string[]) => {
+    setCopiaAbierta(false);
+    const primero = copiados[0];
+    const nuevoLunes = lunesDeLaSemana(primero);
+    if (nuevoLunes === lunes) setRecargaDias(r => r + 1); else setLunes(nuevoLunes);
+    setFecha(primero);
+    notify(`Programación copiada a ${copiados.length === 1 ? fechaLarga(primero) : `${copiados.length} días`}${omitidos.length ? ` · se omitieron ${omitidos.length} días publicados o pasados` : ""}`);
+  };
+
   const filaHoraMaria = (numero: number) => {
     if (!oraciones) return null;
     const id = oraciones.horaMaria.id;
@@ -1342,7 +1404,7 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
   };
 
   return <>
-    <PageHead title="Calendario" subtitle="Programa el contenido diario de la app."/>
+    <PageHead title="Calendario" subtitle="Programa el contenido diario de la app." action={<div className="head-actions"><Button variant="secondary" icon="calendar" disabled={!oraciones || cargando} onClick={() => setCopiaAbierta(true)}>Copiar día o semana</Button></div>}/>
     <div className="calendar-layout">
       <Card className="calendar-card">
         <div className="calendar-head">
@@ -1384,6 +1446,7 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
       </Card>
     </div>
     {subiendo && biblioteca && oraciones && <FormularioContenido oraciones={biblioteca} oracionInicial={oraciones.horaMaria.id} seccion="semana" fechaInicial={fecha} admin={admin} onCerrar={() => setSubiendo(false)} onGuardado={alSubir}/>}
+    {copiaAbierta && oraciones && <CopiarProgramacion fecha={fecha} oraciones={oraciones} admin={admin} onCerrar={() => setCopiaAbierta(false)} onCopiado={alCopiar}/>}
   </>;
 }
 
