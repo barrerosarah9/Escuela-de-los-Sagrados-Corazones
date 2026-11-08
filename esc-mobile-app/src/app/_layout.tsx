@@ -52,6 +52,7 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
         <Stack.Screen name="configuracion" />
         <Stack.Screen name="editar-perfil" />
         <Stack.Screen name="publicacion/[id]" />
+        <Stack.Screen name="seccion/[clave]" />
       </Stack.Protected>
       <Stack.Protected guard={!session} redirectTo="/">
         <Stack.Screen name="(auth)" />
