@@ -50,12 +50,16 @@ export type OracionCalendario = {
   clave: string;
   nombre: string;
   orden: number;
+  diaSemana: number | null;
 };
 
 export type OracionesCalendario = {
   variables: OracionCalendario[];
   horaMaria: OracionCalendario;
   widget: OracionCalendario;
+  semana: OracionCalendario[];
+  mes: OracionCalendario[];
+  anio: OracionCalendario[];
 };
 
 export type OpcionContenido = {
@@ -94,6 +98,8 @@ type FilaOracion = {
   clave: string;
   nombre: string;
   orden: number;
+  seccion: string;
+  dia_semana: number | null;
 };
 
 type FilaContenido = {
@@ -164,6 +170,16 @@ function formatosDe(fila: FilaContenido): FormatoContenido[] {
   return formatos;
 }
 
+function aOracion(fila: FilaOracion): OracionCalendario {
+  return {
+    id: fila.id,
+    clave: fila.clave,
+    nombre: fila.nombre,
+    orden: fila.orden,
+    diaSemana: fila.dia_semana,
+  };
+}
+
 function aOpcion(fila: FilaContenido): OpcionContenido {
   return {
     id: fila.id,
@@ -187,6 +203,31 @@ export function oracionesRequeridas(fecha: string, oraciones: OracionesCalendari
   return esSabado(fecha)
     ? [...oraciones.variables, oraciones.horaMaria, oraciones.widget]
     : oracionesDiarias(oraciones);
+}
+
+export function esPrimeraSemana(fecha: string) {
+  return Number(fecha.slice(8, 10)) <= 7;
+}
+
+export function oficioDeLaSemana(fecha: string, oraciones: OracionesCalendario) {
+  return oraciones.semana.find(oracion => oracion.diaSemana === diaSemanaIso(fecha)) ?? null;
+}
+
+export function oracionesDelMes(fecha: string, oraciones: OracionesCalendario) {
+  return oraciones.mes.filter(oracion => oracion.diaSemana === diaSemanaIso(fecha));
+}
+
+export function oficiosDelDia(fecha: string, oraciones: OracionesCalendario) {
+  const oficio = oficioDeLaSemana(fecha, oraciones);
+  return [
+    ...(oficio ? [oficio] : []),
+    ...(esPrimeraSemana(fecha) ? oracionesDelMes(fecha, oraciones) : []),
+    ...oraciones.anio,
+  ];
+}
+
+export function oracionesEditables(fecha: string, oraciones: OracionesCalendario) {
+  return [...oracionesDiarias(oraciones), ...oficiosDelDia(fecha, oraciones)];
 }
 
 export function faltantes(
@@ -220,23 +261,42 @@ export async function listarOracionesCalendario(): Promise<OracionesCalendario> 
   try {
     const { data, error } = await supabase
       .from('oraciones')
-      .select('id, clave, nombre, orden')
-      .in('clave', [...CLAVES_ORACIONES_VARIABLES, CLAVE_HORA_MARIA, CLAVE_WIDGET]);
+      .select('id, clave, nombre, orden, seccion, dia_semana')
+      .order('orden', { ascending: true });
 
     if (error) throw errorDeCarga(error, MENSAJES_CALENDARIO.carga);
 
     const filas = (data ?? []) as FilaOracion[];
+    const deSeccion = (seccion: string) =>
+      filas.filter(fila => fila.seccion === seccion).map(aOracion);
     const variables = CLAVES_ORACIONES_VARIABLES.map(clave =>
       filas.find(fila => fila.clave === clave),
     );
     const horaMaria = filas.find(fila => fila.clave === CLAVE_HORA_MARIA);
     const widget = filas.find(fila => fila.clave === CLAVE_WIDGET);
+    const semana = deSeccion('semana');
+    const mes = deSeccion('mes');
+    const anio = deSeccion('anio');
 
-    if (variables.some(oracion => !oracion) || !horaMaria || !widget) {
+    if (
+      variables.some(oracion => !oracion) ||
+      !horaMaria ||
+      !widget ||
+      semana.length !== 7 ||
+      mes.length !== 4 ||
+      anio.length !== 3
+    ) {
       throw new Error(MENSAJES_CALENDARIO.catalogo);
     }
 
-    return { variables: variables as OracionCalendario[], horaMaria, widget };
+    return {
+      variables: (variables as FilaOracion[]).map(aOracion),
+      horaMaria: aOracion(horaMaria),
+      widget: aOracion(widget),
+      semana,
+      mes,
+      anio,
+    };
   } catch (error) {
     relanzar(error, MENSAJES_CALENDARIO.carga);
   }
@@ -282,6 +342,33 @@ export async function listarImagenesWidget(
 
     if (error) throw errorDeCarga(error, MENSAJES_CALENDARIO.cargaOpciones);
     return ((data ?? []) as FilaContenido[]).map(aOpcion);
+  } catch (error) {
+    relanzar(error, MENSAJES_CALENDARIO.cargaOpciones);
+  }
+}
+
+export async function listarOpcionesOficios(
+  oraciones: OracionesCalendario,
+): Promise<Record<number, OpcionContenido[]>> {
+  const ids = [...oraciones.semana, ...oraciones.mes, ...oraciones.anio]
+    .filter(oracion => oracion.id !== oraciones.horaMaria.id)
+    .map(oracion => oracion.id);
+  try {
+    const { data, error } = await supabase
+      .from('contenidos')
+      .select(COLUMNAS_CONTENIDO)
+      .in('oracion_id', ids)
+      .order('numero', { ascending: true, nullsFirst: false })
+      .order('nombre', { ascending: true });
+
+    if (error) throw errorDeCarga(error, MENSAJES_CALENDARIO.cargaOpciones);
+
+    const opciones: Record<number, OpcionContenido[]> = {};
+    for (const id of ids) opciones[id] = [];
+    for (const fila of (data ?? []) as FilaContenido[]) {
+      opciones[fila.oracion_id]?.push(aOpcion(fila));
+    }
+    return opciones;
   } catch (error) {
     relanzar(error, MENSAJES_CALENDARIO.cargaOpciones);
   }
@@ -341,7 +428,10 @@ export async function cargarDias(
         .select('fecha, oracion_id, contenido_id')
         .gte('fecha', desde)
         .lte('fecha', hasta)
-        .eq('oracion_id', oraciones.horaMaria.id),
+        .in(
+          'oracion_id',
+          [...oraciones.semana, ...oraciones.mes, ...oraciones.anio].map(oracion => oracion.id),
+        ),
     ]);
 
     const error = dias.error ?? contenidos.error ?? oficios.error;
@@ -392,10 +482,13 @@ export async function guardarDia(
       .filter(id => !!selecciones[id])
       .map(id => ({ fecha, oracion_id: id, contenido_id: selecciones[id] as number }));
     const quitar = diarias.filter(id => !selecciones[id]);
-    const sabado = esSabado(fecha);
-    const horaMaria = sabado ? (selecciones[oraciones.horaMaria.id] ?? null) : null;
+    const oficios = oficiosDelDia(fecha, oraciones).map(oracion => oracion.id);
+    const asignarOficios = oficios
+      .filter(id => !!selecciones[id])
+      .map(id => ({ fecha, oracion_id: id, contenido_id: selecciones[id] as number }));
+    const quitarOficios = oficios.filter(id => !selecciones[id]);
 
-    if (asignar.length || horaMaria) {
+    if (asignar.length || asignarOficios.length) {
       const { error } = await supabase
         .from('calendario_dias')
         .upsert({ fecha, creado_por: adminId }, { onConflict: 'fecha', ignoreDuplicates: true });
@@ -418,19 +511,19 @@ export async function guardarDia(
       if (error) return { estado: 'error', mensaje: mensajeDeGuardado(error) };
     }
 
-    if (sabado) {
-      const { error } = horaMaria
-        ? await supabase
-            .from('asignaciones_oficios')
-            .upsert(
-              { fecha, oracion_id: oraciones.horaMaria.id, contenido_id: horaMaria },
-              { onConflict: 'fecha,oracion_id' },
-            )
-        : await supabase
-            .from('asignaciones_oficios')
-            .delete()
-            .eq('fecha', fecha)
-            .eq('oracion_id', oraciones.horaMaria.id);
+    if (asignarOficios.length) {
+      const { error } = await supabase
+        .from('asignaciones_oficios')
+        .upsert(asignarOficios, { onConflict: 'fecha,oracion_id' });
+      if (error) return { estado: 'error', mensaje: mensajeDeGuardado(error) };
+    }
+
+    if (quitarOficios.length) {
+      const { error } = await supabase
+        .from('asignaciones_oficios')
+        .delete()
+        .eq('fecha', fecha)
+        .in('oracion_id', quitarOficios);
       if (error) return { estado: 'error', mensaje: mensajeDeGuardado(error) };
     }
 
