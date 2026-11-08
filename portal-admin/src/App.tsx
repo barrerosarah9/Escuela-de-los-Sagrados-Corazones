@@ -7,7 +7,7 @@ import { eliminarComentario, listarComentarios, type Comentario } from "./lib/co
 import { buscarOracionPorFecha, diaSemanaIso, diasDeLaSemana, esFechaValida, fechaDeHoyEnBogota, guardarOracionEnVivo, HORA_PREDETERMINADA, LARGO_MAXIMO_TITULO, listarOficiosDeLaSemana, listarOracionesEnVivo, lunesDeLaSemana, MENSAJES_ORACION_EN_VIVO, sumarDias, tieneErrores, tituloSugerido, validarOracionEnVivo, type DatosOracionEnVivo, type ErroresOracionEnVivo, type OracionEnVivo } from "./lib/oracion-en-vivo";
 import { buscarContenidos, CONTENIDOS_POR_PAGINA, IMAGENES_POR_PAGINA, LARGO_MAXIMO_BUSQUEDA, listarContenidos, listarOracionesBiblioteca, normalizarBusqueda, RESULTADOS_POR_PAGINA, type ContenidoBiblioteca, type FiltrosBusqueda, type FormatoContenido, type OracionBiblioteca, type PaginaContenidos, type PaginaResultados, type SeccionBiblioteca } from "./lib/biblioteca";
 import { actualizarContenido, campoVariante, diasAsignados, eliminarContenido, ErrorContenido, esWidget, FORMATO_PDF, FORMATOS_IMAGEN, guardarContenido, LARGO_MAXIMO_NOMBRE, nombreSugerido, oracionLlena, siguienteNumero, tieneErrores as tieneErroresContenido, validarArchivo, validarContenido, validarEdicion, type ErroresContenido } from "./lib/contenidos";
-import { bloqueoDelDia, buscarHoraMaria, cargarDias, esSabado, faltantes, guardarDia, listarImagenesWidget, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oracionesRequeridas, urlVistaPrevia, copiarProgramacion, type DiaCalendario, type ModoCopia, type EstadoDia, type OpcionContenido, type OracionesCalendario, type Selecciones } from "./lib/calendario";
+import { bloqueoDelDia, buscarHoraMaria, cargarDias, copiarProgramacion, esPrimeraSemana, esSabado, faltantes, guardarDia, listarImagenesWidget, listarOpcionesOficios, listarOpcionesVariables, listarOracionesCalendario, MENSAJES_CALENDARIO, oficioDeLaSemana, oracionesDelMes, oracionesEditables, oracionesRequeridas, urlVistaPrevia, type DiaCalendario, type EstadoDia, type ModoCopia, type OpcionContenido, type OracionCalendario, type OracionesCalendario, type Selecciones } from "./lib/calendario";
 import { crearPublicacion, editarPublicacion, eliminarPublicacion, listarPublicaciones, MAXIMO_IMAGENES, MENSAJES_PUBLICACION, urlImagen, validarImagen, type Publicacion } from "./lib/publicaciones";
 
 type Section =
@@ -1240,14 +1240,18 @@ function CopiarProgramacion({ fecha, oraciones, admin, onCerrar, onCopiado }: { 
   </div>;
 }
 
+const etiquetaDia = (opcion: OpcionContenido) => opcion.numero ? `Día ${opcion.numero}` : opcion.nombre;
+
 function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string) => void }) {
   const hoy = useMemo(() => fechaDeHoyEnBogota(), []);
   const [lunes, setLunes] = useState(() => lunesDeLaSemana(hoy));
   const [fecha, setFecha] = useState(hoy);
   const [oraciones, setOraciones] = useState<OracionesCalendario | null>(null);
   const [opciones, setOpciones] = useState<Record<number, OpcionContenido[]>>({});
+  const [opcionesOficios, setOpcionesOficios] = useState<Record<number, OpcionContenido[]>>({});
   const [dias, setDias] = useState<DiaCalendario[]>([]);
   const [selecciones, setSelecciones] = useState<Selecciones>({});
+  const [marcadas, setMarcadas] = useState<Record<number, boolean>>({});
   const [horaMaria, setHoraMaria] = useState<OpcionContenido | null>(null);
   const [buscandoHoraMaria, setBuscandoHoraMaria] = useState(false);
   const [cargando, setCargando] = useState(true);
@@ -1269,14 +1273,19 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
   const sabado = esSabado(fecha);
   const diaSemana = diaSemanaIso(fecha);
   const mensual = diaSemana >= 4 && diaSemana <= 6;
+  const primeraSemana = esPrimeraSemana(fecha);
   const pestanaActiva: PestanaCalendario = pestana === "mes" && !mensual ? "hora" : pestana;
   const [anio, mes] = partesDeFecha(fecha);
   const semana = semanaIso(lunes);
+  const oficio = oraciones ? oficioDeLaSemana(fecha, oraciones) : null;
+  const delMes = oraciones ? oracionesDelMes(fecha, oraciones) : [];
   const faltanBorrador = oraciones ? faltantes(fecha, selecciones, oraciones) : [];
   const requeridas = oraciones ? oracionesRequeridas(fecha, oraciones) : [];
+  const editables = oraciones ? oracionesEditables(fecha, oraciones) : [];
+  const sinDia = oraciones ? oraciones.anio.filter(oracion => marcadas[oracion.id] && !selecciones[oracion.id]) : [];
   const imagenElegida = oraciones ? imagenesWidget.find(imagen => imagen.id === selecciones[oraciones.widget.id]) ?? null : null;
   const rutaElegida = imagenElegida?.imagenPath ?? null;
-  const hayCambios = !!dia && requeridas.some(oracion => (selecciones[oracion.id] ?? null) !== (dia.asignaciones[oracion.id] ?? null));
+  const hayCambios = !!dia && editables.some(oracion => (selecciones[oracion.id] ?? null) !== (dia.asignaciones[oracion.id] ?? null));
   const pestanas: { id: PestanaCalendario; label: string }[] = [
     { id: "hora", label: "Santificar cada hora del día" },
     { id: "semana", label: "Santificar cada día de la semana" },
@@ -1290,10 +1299,11 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
     setCargando(true);
     listarOracionesCalendario()
       .then(async lista => {
-        const [mapa, imagenes] = await Promise.all([listarOpcionesVariables(lista), listarImagenesWidget(lista)]);
+        const [mapa, imagenes, oficios] = await Promise.all([listarOpcionesVariables(lista), listarImagenesWidget(lista), listarOpcionesOficios(lista)]);
         if (!activo) return;
         setOpciones(mapa);
         setImagenesWidget(imagenes);
+        setOpcionesOficios(oficios);
         setOraciones(lista);
       })
       .catch((e: Error) => { if (activo) { setErrorCarga(e.message); setCargando(false); } });
@@ -1312,7 +1322,10 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
     return () => { activo = false; };
   }, [oraciones, lunes, recargaDias]);
 
-  useEffect(() => { setSelecciones(dia ? { ...dia.asignaciones } : {}); }, [dia]);
+  useEffect(() => {
+    setSelecciones(dia ? { ...dia.asignaciones } : {});
+    setMarcadas(dia && oraciones ? Object.fromEntries(oraciones.anio.map(oracion => [oracion.id, !!dia.asignaciones[oracion.id]])) : {});
+  }, [dia, oraciones]);
 
   useEffect(() => { setErrorGuardado(""); }, [fecha]);
 
@@ -1344,8 +1357,13 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
 
   const elegir = (oracionId: number, valor: string) => setSelecciones(actuales => ({ ...actuales, [oracionId]: valor ? Number(valor) : null }));
 
+  const marcar = (oracionId: number, marcada: boolean) => {
+    setMarcadas(actuales => ({ ...actuales, [oracionId]: marcada }));
+    if (!marcada) elegir(oracionId, "");
+  };
+
   const guardar = async () => {
-    if (!oraciones || !dia || bloqueo) return;
+    if (!oraciones || !dia || bloqueo || sinDia.length) return;
     setGuardando(true);
     setErrorGuardado("");
     const resultado = await guardarDia(fecha, selecciones, oraciones, admin.id);
@@ -1403,6 +1421,11 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
     return <div className="fila-calendario">{titulo}<span className="fila-calendario-nota">{bloqueo ? "Sin Hora de María para este sábado." : <>No hay Hora de María para este sábado.<Button variant="secondary" icon="upload" disabled={guardando} onClick={abrirSubida}>Subir</Button></>}</span></div>;
   };
 
+  const filaOficio = (oracion: OracionCalendario, numero: number, vacio: string, deshabilitada = false) => {
+    const lista = opcionesOficios[oracion.id] ?? [];
+    return <label key={oracion.id}><span><i>{numero}</i><b>{oracion.nombre}</b></span><select value={selecciones[oracion.id] ?? ""} disabled={!!bloqueo || guardando || deshabilitada} onChange={e => elegir(oracion.id, e.target.value)}><option value="">{lista.length ? vacio : "Sin variantes en la biblioteca"}</option>{lista.map(opcion => <option key={opcion.id} value={opcion.id}>{etiquetaOpcion(opcion)}</option>)}</select></label>;
+  };
+
   return <>
     <PageHead title="Calendario" subtitle="Programa el contenido diario de la app." action={<div className="head-actions"><Button variant="secondary" icon="calendar" disabled={!oraciones || cargando} onClick={() => setCopiaAbierta(true)}>Copiar día o semana</Button></div>}/>
     <div className="calendar-layout">
@@ -1432,16 +1455,31 @@ function Calendar({ admin, notify }: { admin: Administrador; notify: (s: string)
                   const lista = opciones[oracion.id] ?? [];
                   return <label key={oracion.id}><span><i>{i + 1}</i><b>{oracion.nombre}</b></span><select value={selecciones[oracion.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oracion.id, e.target.value)}><option value="">{lista.length ? "Seleccionar desde la biblioteca…" : "Sin contenidos en la biblioteca"}</option>{lista.map(opcion => <option key={opcion.id} value={opcion.id}>{etiquetaOpcion(opcion)}</option>)}</select></label>;
                 })}
-                {sabado && filaHoraMaria(oraciones.variables.length + 1)}
-                <label><span><i>{oraciones.variables.length + (sabado ? 2 : 1)}</i><b>{oraciones.widget.nombre}</b></span><select value={selecciones[oraciones.widget.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oraciones.widget.id, e.target.value)}><option value="">{imagenesWidget.length ? "Seleccionar imagen del widget…" : "Sin imágenes del widget en la biblioteca"}</option>{imagenesWidget.map(imagen => <option key={imagen.id} value={imagen.id}>{imagen.nombre}</option>)}</select></label>
+                <label><span><i>{oraciones.variables.length + 1}</i><b>{oraciones.widget.nombre}</b></span><select value={selecciones[oraciones.widget.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oraciones.widget.id, e.target.value)}><option value="">{imagenesWidget.length ? "Seleccionar imagen del widget…" : "Sin imágenes del widget en la biblioteca"}</option>{imagenesWidget.map(imagen => <option key={imagen.id} value={imagen.id}>{imagen.nombre}</option>)}</select></label>
                 {rutaElegida && <div className="calendario-widget-vista">{vistaWidget?.ruta === rutaElegida ? <img src={vistaWidget.url} alt={`Vista previa de ${imagenElegida?.nombre ?? "la imagen del widget"}`}/> : <span>{errorVista || "Cargando vista previa…"}</span>}</div>}
                 {ORACIONES_FIJAS.map(nombre => <div className="fixed-row" key={nombre}><span><i/><b>{nombre}</b></span><span>Se edita en la Biblioteca</span></div>)}
                 <p className="fixed-note"><i/>Oración fija: se muestra todos los días y no se programa en el calendario.</p>
-                {!bloqueo && faltanBorrador.length > 0 && <p className="calendario-faltan">{faltanBorrador.length === requeridas.length ? "No has elegido ninguna oración: si guardas así, el día queda vacío." : `Falta${faltanBorrador.length === 1 ? "" : "n"}: ${faltanBorrador.map(o => o.nombre).join(", ")}. Si guardas así, el día queda incompleto.`}</p>}
-                {errorGuardado && <div className="form-error" role="alert">{errorGuardado}</div>}
-                {!bloqueo && <div className="form-actions">{hayCambios && <span className="calendario-cambios">Cambios sin guardar</span>}<Button disabled={guardando || !hayCambios} onClick={guardar}>{guardando ? "Guardando…" : "Guardar programación"}</Button></div>}
               </>}
-              {pestanaActiva !== "hora" && <p className="tab-note">{sabado && pestanaActiva === "semana" ? <>La <b>Hora de María</b> de este sábado se asigna en «Santificar cada hora del día».</> : "Disponible pronto."}</p>}
+              {pestanaActiva === "semana" && <>
+                <p className="tab-note">{sabado ? <>El sábado se reza la <b>Hora de María</b> de ese día: elígela o súbela si todavía no está en la biblioteca.</> : <>Oficio de este día: <b>{oficio?.nombre}</b>. Solo aparecen las variantes subidas a la biblioteca.</>}</p>
+                {sabado ? filaHoraMaria(1) : oficio && filaOficio(oficio, 1, "Seleccionar variante…")}
+              </>}
+              {pestanaActiva === "mes" && <>
+                <p className="tab-note">{primeraSemana ? <>Este es el primer {dayNames[diaSemana - 1]} del mes: elige la variante o déjala «Sin asignar».</> : <>Este no es el primer {dayNames[diaSemana - 1]} del mes, así que el oficio del mes no se asigna.</>}</p>
+                {delMes.map((oracion, i) => filaOficio(oracion, i + 1, "Sin asignar", !primeraSemana))}
+              </>}
+              {pestanaActiva === "ano" && <>
+                <p className="tab-note">Marca ninguna, una o varias consagraciones y elige el día de cada una.</p>
+                {oraciones.anio.map(oracion => {
+                  const lista = opcionesOficios[oracion.id] ?? [];
+                  const marcada = !!marcadas[oracion.id];
+                  return <div className="consecration-row" key={oracion.id}><label className="check"><input type="checkbox" checked={marcada} disabled={!!bloqueo || guardando} onChange={e => marcar(oracion.id, e.target.checked)}/><b>{oracion.nombre}</b></label>{marcada && <select aria-label={`Día de ${oracion.nombre}`} value={selecciones[oracion.id] ?? ""} disabled={!!bloqueo || guardando} onChange={e => elegir(oracion.id, e.target.value)}><option value="">{lista.length ? "Seleccionar día…" : "Sin días en la biblioteca"}</option>{lista.map(opcion => <option key={opcion.id} value={opcion.id}>{etiquetaDia(opcion)}</option>)}</select>}</div>;
+                })}
+              </>}
+              {!bloqueo && faltanBorrador.length > 0 && <p className="calendario-faltan">{faltanBorrador.length === requeridas.length ? "No has elegido ninguna oración: si guardas así, el día queda vacío." : `Falta${faltanBorrador.length === 1 ? "" : "n"}: ${faltanBorrador.map(o => o.nombre).join(", ")}. Si guardas así, el día queda incompleto.`}</p>}
+              {!bloqueo && sinDia.length > 0 && <div className="form-error" role="alert">Elige el día de {sinDia.map(o => o.nombre).join(" y ")} o desmárca{sinDia.length === 1 ? "la" : "las"} para poder guardar.</div>}
+              {errorGuardado && <div className="form-error" role="alert">{errorGuardado}</div>}
+              {!bloqueo && <div className="form-actions">{hayCambios && <span className="calendario-cambios">Cambios sin guardar</span>}<Button disabled={guardando || !hayCambios || sinDia.length > 0} onClick={guardar}>{guardando ? "Guardando…" : "Guardar programación"}</Button></div>}
             </div>}
       </Card>
     </div>
