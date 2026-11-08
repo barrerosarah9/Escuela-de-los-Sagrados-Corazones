@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Escuela de los Sagrados Corazones</title>
+    <meta name="description" content="App de oración de la Escuela de los Sagrados Corazones de Jesús y de María." />
+    <link rel="icon" href="/logo-escuela.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Lora:wght@500&family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --rojo: #a11e21;
+        --rojo-oscuro: #761619;
+        --carbon: #190e0e;
+        --gris: #786f68;
+        --fondo: #f2f3f4;
+        --crema: #f2e6bc;
+        --borde: #e2e3e5;
+        --blanco: #ffffff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: var(--fondo);
+        color: var(--carbon);
+        font-family: 'Source Sans 3', 'Segoe UI', Helvetica, Arial, sans-serif;
+      }
+      main {
+        width: 100%;
+        max-width: 480px;
+        background: var(--blanco);
+        border: 1px solid var(--borde);
+        border-radius: 14px;
+        overflow: hidden;
+        text-align: center;
+      }
+      .cabecera {
+        padding: 32px 24px 20px;
+        border-bottom: 4px solid var(--rojo);
+      }
+      .cabecera img {
+        width: 120px;
+        height: 120px;
+      }
+      .marca {
+        margin: 14px 0 0;
+        font-family: 'Lora', Georgia, serif;
+        font-size: 22px;
+        color: var(--rojo);
+      }
+      .contenido {
+        padding: 32px 28px 36px;
+      }
+      h1 {
+        margin: 0;
+        font-family: 'Lora', Georgia, serif;
+        font-weight: 500;
+        font-size: 28px;
+        line-height: 1.25;
+      }
+      p {
+        margin: 14px 0 0;
+        font-size: 17px;
+        line-height: 1.6;
+      }
+      .boton {
+        display: inline-block;
+        margin-top: 28px;
+        padding: 16px 30px;
+        background: var(--rojo);
+        color: var(--blanco);
+        font-weight: 700;
+        text-decoration: none;
+        border-radius: 10px;
+      }
+      .boton:hover {
+        background: var(--rojo-oscuro);
+      }
+      .nota {
+        font-size: 15px;
+        color: var(--gris);
+      }
+      footer {
+        background: var(--crema);
+        padding: 20px 28px;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="cabecera">
+        <img src="/logo-escuela.png" alt="Escuela de los Sagrados Corazones" width="120" height="120" />
+        <p class="marca">Escuela de los Sagrados Corazones</p>
+      </div>
+      <div class="contenido">
+        <h1>Ora con la comunidad cada día</h1>
+        <p>La app de la Escuela de los Sagrados Corazones reúne las oraciones del día, la oración en vivo, las donaciones y la tienda.</p>
+        <a id="abrir-app" class="boton" href="sagradoscorazones://">Abrir la app</a>
+        <p class="nota">Si llegaste desde un correo, abre la app en tu celular para ver el detalle.</p>
+      </div>
+      <footer>Escuela de los Sagrados Corazones de Jesús y de María</footer>
+    </main>
+    <script>
+      const ruta = window.location.pathname.replace(/^\/+/, '');
+      document.getElementById('abrir-app').href = 'sagradoscorazones://' + ruta;
+    </script>
+  </body>
+</html>
