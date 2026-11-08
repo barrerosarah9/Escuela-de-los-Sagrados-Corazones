@@ -3,7 +3,6 @@ import {
   COLORES,
   type Correo,
   encabezado,
-  ESQUEMA_APP,
   formatoFecha,
   formatoFechaHora,
   formatoPesos,
@@ -12,6 +11,7 @@ import {
   plantillaBase,
   tablaDetalles,
   textoPlano,
+  URL_APP,
 } from './base.ts';
 
 export interface DatosRecordatorioPago {
@@ -40,7 +40,13 @@ function aviso(): string {
     <td style="background:${COLORES.crema};border-radius:14px;padding:20px 22px;">
       <table role="presentation" cellspacing="0" cellpadding="0">
         <tr>
-          <td valign="top" style="padding:0 14px 0 0;${fuente(20, COLORES.rojo)}">&#9888;&#xFE0E;</td>
+          <td valign="top" style="padding:1px 14px 0 0;">
+            <table role="presentation" cellspacing="0" cellpadding="0">
+              <tr>
+                <td align="center" valign="middle" width="24" height="24" style="width:24px;height:24px;background:${COLORES.rojo};border-radius:12px;${fuente(15, COLORES.blanco, 'font-weight:700;')}">!</td>
+              </tr>
+            </table>
+          </td>
           <td valign="top">
             <p style="margin:0;${fuente(16, COLORES.carbon, 'font-weight:700;')}">${AVISO_TITULO}</p>
             <p style="margin:4px 0 0;${fuente(15, COLORES.carbon)}">${AVISO_TEXTO}</p>
@@ -63,6 +69,7 @@ export function recordatorioPagoRechazado(datos: DatosRecordatorioPago): Correo 
   const reintento = datos.proximoIntento
     ? `Intentaremos el cobro de nuevo el ${formatoFecha(datos.proximoIntento)}.`
     : null;
+  const enlace = `${URL_APP}donaciones`;
   const asunto = 'No pudimos procesar tu donación mensual';
 
   const html = plantillaBase({
@@ -76,7 +83,7 @@ export function recordatorioPagoRechazado(datos: DatosRecordatorioPago): Correo 
       `<p style="margin:28px 0 0;${fuente(16, COLORES.carbon, 'font-weight:700;')}">¿Qué puedes hacer?</p>`,
       parrafo(QUE_HACER, 15, COLORES.carbon, 8),
       reintento ? parrafo(reintento, 15, COLORES.carbon, 8) : '',
-      boton('Actualizar método de pago', `${ESQUEMA_APP}donaciones`),
+      boton('Actualizar método de pago', enlace),
     ].join(''),
     pie: PIE,
     ayuda: AYUDA,
@@ -95,6 +102,7 @@ export function recordatorioPagoRechazado(datos: DatosRecordatorioPago): Correo 
       '¿Qué puedes hacer?',
       QUE_HACER,
       reintento,
+      `Actualizar método de pago: ${enlace}`,
     ],
     PIE,
     AYUDA,

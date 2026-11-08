@@ -2,8 +2,9 @@ const FUENTE_TITULO = "'Lora',Georgia,'Times New Roman',serif";
 const FUENTE_TEXTO = "'Source Sans 3','Segoe UI',Helvetica,Arial,sans-serif";
 const URL_FUENTES =
   'https://fonts.googleapis.com/css2?family=Lora:wght@400;500&family=Source+Sans+3:wght@400;600;700&display=swap';
-const URL_LOGO =
-  'https://mwmrcunefvapawpocvof.supabase.co/storage/v1/object/public/marca/logo-escuela.png';
+const URL_LOGO = 'https://escuelasagradoscorazones.com/logo-escuela.png';
+
+export const URL_APP = 'https://escuelasagradoscorazones.com/';
 
 export const COLORES = {
   rojo: '#A11E21',
@@ -19,8 +20,6 @@ export const COLORES = {
   borde: '#E2E3E5',
   blanco: '#FFFFFF',
 } as const;
-
-export const ESQUEMA_APP = 'sagradoscorazones://';
 
 export interface Correo {
   asunto: string;

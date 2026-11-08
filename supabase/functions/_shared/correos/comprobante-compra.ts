@@ -3,7 +3,6 @@ import {
   COLORES,
   type Correo,
   encabezado,
-  ESQUEMA_APP,
   escapar,
   formatoFecha,
   formatoPesos,
@@ -12,6 +11,7 @@ import {
   plantillaBase,
   subtitulo,
   textoPlano,
+  URL_APP,
 } from './base.ts';
 
 export interface ArticuloComprado {
@@ -128,6 +128,7 @@ function cajaDireccion(envio: DireccionEnvio): string {
 
 export function comprobanteCompra(datos: DatosComprobanteCompra): Correo {
   const fecha = formatoFecha(datos.fecha);
+  const enlace = `${URL_APP}pedidos/${encodeURIComponent(datos.pedidoId)}`;
   const asunto = `Confirmamos tu compra · Pedido N.º ${datos.numeroPedido}`;
 
   const html = plantillaBase({
@@ -141,7 +142,7 @@ export function comprobanteCompra(datos: DatosComprobanteCompra): Correo {
       `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:12px 0 0;border-collapse:collapse;border-top:1px solid ${COLORES.borde};">${datos.articulos.map(filaArticulo).join('')}</table>`,
       totales(datos.subtotalCentavos, datos.envioCentavos, datos.totalCentavos),
       cajaDireccion(datos.envio),
-      boton('Ver mi pedido', `${ESQUEMA_APP}pedidos/${encodeURIComponent(datos.pedidoId)}`),
+      boton('Ver mi pedido', enlace),
     ].join(''),
     pie: PIE,
     ayuda: AYUDA,
@@ -171,6 +172,8 @@ export function comprobanteCompra(datos: DatosComprobanteCompra): Correo {
       datos.envio.nombre,
       datos.envio.direccion,
       `${datos.envio.ciudad}, ${datos.envio.departamento} · ${datos.envio.telefono}`,
+      '',
+      `Ver mi pedido: ${enlace}`,
     ],
     PIE,
     AYUDA,

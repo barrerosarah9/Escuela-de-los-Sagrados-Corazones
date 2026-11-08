@@ -4,7 +4,6 @@ import {
   COLORES,
   type Correo,
   encabezado,
-  ESQUEMA_APP,
   formatoFecha,
   formatoFechaHora,
   formatoPesos,
@@ -12,6 +11,7 @@ import {
   plantillaBase,
   tablaDetalles,
   textoPlano,
+  URL_APP,
 } from './base.ts';
 
 export interface DatosComprobanteDonacion {
@@ -49,6 +49,7 @@ export function comprobanteDonacion(datos: DatosComprobanteDonacion): Correo {
   const nota = mensual
     ? 'Puedes consultar y gestionar tus donaciones mensuales en cualquier momento desde la sección Donaciones de la app.'
     : 'Puedes consultar tus donaciones en cualquier momento desde la sección Donaciones de la app.';
+  const enlace = `${URL_APP}donaciones`;
   const asunto = `Gracias por tu donación · Comprobante N.º ${datos.numero}`;
 
   const html = plantillaBase({
@@ -60,7 +61,7 @@ export function comprobanteDonacion(datos: DatosComprobanteDonacion): Correo {
       cajaMonto('Monto donado', monto, tipoDonacion),
       tablaDetalles(filas),
       parrafo(nota, 15, COLORES.carbon, 24),
-      boton('Ver mis donaciones', `${ESQUEMA_APP}donaciones`),
+      boton('Ver mis donaciones', enlace),
     ].join(''),
     pie: PIE,
     ayuda: AYUDA,
@@ -76,6 +77,7 @@ export function comprobanteDonacion(datos: DatosComprobanteDonacion): Correo {
       ...filas.map(([etiqueta, valor]) => `${etiqueta}: ${valor}`),
       '',
       nota,
+      `Ver mis donaciones: ${enlace}`,
     ],
     PIE,
     AYUDA,
