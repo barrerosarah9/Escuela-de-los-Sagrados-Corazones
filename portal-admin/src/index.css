@@ -290,3 +290,5 @@ a.vista-previa:hover{border-color:var(--cherry);box-shadow:0 0 0 2px rgba(161,30
 .copia-origen b{color:var(--ink)}
 .copia-nota{margin:10px 0 0;font-size:11px;color:var(--warm);line-height:1.5}
 .copia-nota b{color:var(--ink)}
+.calendar-tabs{flex-wrap:nowrap;overflow-x:visible;justify-content:stretch;align-items:stretch}
+.calendar-tabs button{flex:1 1 0;min-width:0;white-space:normal;line-height:1.25;text-align:center;padding:7px 8px}
