@@ -19,9 +19,12 @@ Se quitaron los datos de ejemplo del prototipo que solo usaba el calendario (`li
 No hay migraciones nuevas: `calendario_dias`, `calendario_contenidos` y `asignaciones_oficios`, el *trigger*
 `validar_asignacion_calendario` y las llaves foráneas compuestas vienen de T-007, y las políticas «administrar» de T-008.
 
-La imagen del widget de cada día se agregó en T-040: ver
-[Imagen del widget en el calendario (T-040)](Imagen%20del%20widget%20en%20el%20calendario%20(T-040).md). Copiar un
-día o una semana se agregó en T-041: ver [Copiar días y semanas (T-041)](Copiar%20d%C3%ADas%20y%20semanas%20(T-041).md).
+Tareas que siguieron sobre el mismo calendario:
+
+- [Imagen del widget en el calendario (T-040)](Imagen%20del%20widget%20en%20el%20calendario%20(T-040).md)
+- [Copiar días y semanas (T-041)](Copiar%20d%C3%ADas%20y%20semanas%20(T-041).md)
+- [Oficios en el calendario (T-042)](Oficios%20en%20el%20calendario%20(T-042).md): pestañas de la semana, del mes y del
+  año. Desde T-042, la Hora de María está en la pestaña de la semana.
 
 ## Dónde se guarda cada cosa
 
@@ -29,7 +32,7 @@ día o una semana se agregó en T-041: ver [Copiar días y semanas (T-041)](Copi
 | --- | --- |
 | El día (y si ya se publicó, `publicado_en`) | `calendario_dias` |
 | Jaculatorias, Evangelio de Hoy, Santo Rosario de Hoy, Diario Espiritual, Hora de reparación e imagen del widget (T-040) | `calendario_contenidos` |
-| Hora de María del sábado (es un oficio de la semana) | `asignaciones_oficios` |
+| Hora de María del sábado y los demás oficios de la semana, del mes y del año (T-042) | `asignaciones_oficios` |
 
 Las oraciones se buscan por `clave` (`jaculatorias`, `evangelio-hoy`, `santo-rosario-hoy`, `diario-espiritual`,
 `hora-reparacion`, `hora-maria` e `imagen-widget`), no por `id`, para que funcione igual en la base local y en
@@ -48,13 +51,13 @@ producción.
   | Incompleto (amarillo) | Tiene algunas, pero no todas las requeridas |
   | Vacío (gris) | No tiene ninguna de las requeridas |
 
-  El estado se calcula al leer, a partir de las asignaciones. Los oficios de la semana, del mes y del año (T-057)
-  todavía no cuentan.
+  El estado se calcula al leer, a partir de las asignaciones. Los demás oficios (T-057) todavía no cuentan.
 - **Selectores:** cada oración solo lista contenidos de la biblioteca de esa oración (una consulta a `contenidos`
   filtrada por `oracion_id`). La base también lo exige con la llave `(contenido_id, oracion_id)`.
-- **Hora de María:** solo los sábados aparece la fila. Como la biblioteca identifica cada Hora de María por la fecha de
-  su sábado (`contenidos_fecha_key`), el selector ofrece la de ese sábado. Si no existe, el botón **Subir** abre el panel
-  de la Biblioteca (T-036) con el tipo y la fecha puestos; al guardarla queda elegida y falta «Guardar programación».
+- **Hora de María:** solo los sábados, en la pestaña «Santificar cada día de la semana» (desde T-042). Como la
+  biblioteca identifica cada Hora de María por la fecha de su sábado (`contenidos_fecha_key`), el selector ofrece la de
+  ese sábado. Si no existe, el botón **Subir** abre el panel de la Biblioteca (T-036) con el tipo y la fecha puestos; al
+  guardarla queda elegida y falta «Guardar programación».
 - **Antes de guardar** se avisa qué oraciones faltan. Al guardar:
   1. se vuelve a leer el día y, si ya está publicado o pasó, no se escribe nada;
   2. se crea la fila de `calendario_dias` solo si hay algo que asignar (sin pisar `creado_por` si ya existía);
@@ -64,7 +67,6 @@ producción.
 - **Días publicados o pasados:** solo de consulta. Se ven los contenidos asignados, pero los selectores están
   deshabilitados y no hay botón de guardar. Bloquear también los días pasados es una decisión de esta tarea, igual
   que en la Oración en vivo (T-031): cambiarlos no tendría efecto en la app.
-- Las pestañas de la semana, el mes y el año siguen con «Disponible pronto» (T-057).
 
 ## Pendiente fuera de esta tarea
 
@@ -83,7 +85,7 @@ producción.
 4. `cd portal-admin && npm run dev` y, en **Calendario**, revisar:
    - los selectores solo muestran su oración (no aparece Hora Santa);
    - guardar 3 de 5 → Incompleto; las 5 y la imagen del widget → Completo; quitar una → Incompleto;
-   - el sábado con Hora de María: sin ella queda Incompleto y con ella Completo;
+   - el sábado con Hora de María (pestaña de la semana): sin ella queda Incompleto y con ella Completo;
    - el sábado sin Hora de María: «Subir» abre el panel con la fecha puesta y la deja elegida;
    - el día publicado y un día pasado: solo consulta;
    - al recargar, los estados se mantienen.
