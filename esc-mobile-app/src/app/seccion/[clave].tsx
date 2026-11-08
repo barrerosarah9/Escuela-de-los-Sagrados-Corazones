@@ -1,9 +1,13 @@
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../../components/app-text';
 import { BackHeader } from '../../components/back-header';
 import { EstadoVacio } from '../../components/estado-vacio';
+import { ListaDia } from '../../components/lista-dia';
+import { ListaMes } from '../../components/lista-mes';
+import { ListaSemana } from '../../components/lista-semana';
+import { diaSemanaIso } from '../../lib/oraciones-hoy';
 import {
   descripcionSeccion,
   diaDeHoy,
@@ -12,6 +16,8 @@ import {
   tituloSeccion,
 } from '../../lib/secciones-oracion';
 import { colors } from '../../theme';
+
+const SABADO = 6;
 
 export default function SeccionScreen() {
   const { clave } = useLocalSearchParams<{ clave: string }>();
@@ -29,6 +35,10 @@ export default function SeccionScreen() {
     );
   }
 
+  if (clave === 'semana' && diaSemanaIso() === SABADO) {
+    return <Redirect href={{ pathname: '/detalle-oracion', params: { oracion: 'hora-maria' } }} />;
+  }
+
   const dia = diaDeHoy();
 
   return (
@@ -42,11 +52,9 @@ export default function SeccionScreen() {
           </AppText>
           <AppText color={colors.textSecondary}>{descripcionSeccion(clave, dia)}</AppText>
         </View>
-        <EstadoVacio
-          icono="time-outline"
-          titulo="Pronto verás aquí las oraciones"
-          mensaje="Estamos preparando este espacio para acompañar tu oración."
-        />
+        {clave === 'dia' ? <ListaDia /> : null}
+        {clave === 'semana' ? <ListaSemana /> : null}
+        {clave === 'mes' ? <ListaMes /> : null}
       </ScrollView>
     </SafeAreaView>
   );
