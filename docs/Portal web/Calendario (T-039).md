@@ -25,12 +25,14 @@ Tareas que siguieron sobre el mismo calendario:
 - [Copiar días y semanas (T-041)](Copiar%20d%C3%ADas%20y%20semanas%20(T-041).md)
 - [Oficios en el calendario (T-042)](Oficios%20en%20el%20calendario%20(T-042).md): pestañas de la semana, del mes y del
   año. Desde T-042, la Hora de María está en la pestaña de la semana.
+- [Publicación diaria (T-043)](../Base%20de%20datos/Publicaci%C3%B3n%20diaria%20(T-043).md): pg_cron publica el día
+  a las 12:00 a. m. de Bogotá y llena `publicado_en`.
 
 ## Dónde se guarda cada cosa
 
 | Qué | Tabla |
 | --- | --- |
-| El día (y si ya se publicó, `publicado_en`) | `calendario_dias` |
+| El día (y si ya se publicó, `publicado_en`; el que ve la app, `vigente`, desde T-043) | `calendario_dias` |
 | Jaculatorias, Evangelio de Hoy, Santo Rosario de Hoy, Diario Espiritual, Hora de reparación e imagen del widget (T-040) | `calendario_contenidos` |
 | Hora de María del sábado y los demás oficios de la semana, del mes y del año (T-042) | `asignaciones_oficios` |
 
@@ -46,7 +48,7 @@ producción.
 
   | Estado | Cuándo |
   | --- | --- |
-  | Publicado (azul) | `calendario_dias.publicado_en` tiene valor |
+  | Publicado (azul) | `calendario_dias.publicado_en` tiene valor (lo llena pg_cron desde T-043) |
   | Completo (verde) | Tiene las cinco oraciones, la imagen del widget y, si es sábado, la Hora de María |
   | Incompleto (amarillo) | Tiene algunas, pero no todas las requeridas |
   | Vacío (gris) | No tiene ninguna de las requeridas |
@@ -72,7 +74,8 @@ producción.
 
 - **Bloqueo en la base de datos** de los días publicados: hoy lo garantiza el portal; T-057 lo agrega como regla de la
   base para que tampoco se pueda desde la API.
-- El estado completo con los oficios (T-057) y la publicación diaria que llena `publicado_en` (T-043 y T-058).
+- El estado completo con los oficios (T-057) y la activación de los oficios al publicar (T-058). La publicación
+  diaria de las oraciones variables y del widget ya la hace T-043.
 
 ## Cómo probar en local
 
