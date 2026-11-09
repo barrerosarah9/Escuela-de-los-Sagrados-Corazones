@@ -55,6 +55,7 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
         <Stack.Screen name="seccion/[clave]" />
         <Stack.Screen name="mes/[dia]" />
         <Stack.Screen name="detalle-oracion" />
+        <Stack.Screen name="visor-pdf" />
       </Stack.Protected>
       <Stack.Protected guard={!session} redirectTo="/">
         <Stack.Screen name="(auth)" />
