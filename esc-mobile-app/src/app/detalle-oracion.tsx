@@ -8,6 +8,7 @@ import { BackHeader } from '../components/back-header';
 import { EstadoError } from '../components/estado-error';
 import { EstadoVacio } from '../components/estado-vacio';
 import { ListaCarga } from '../components/lista-carga';
+import { VideoOracion } from '../components/video-oracion';
 import {
   obtenerAsignacionesDeHoy,
   obtenerContenidosDeOraciones,
@@ -67,16 +68,18 @@ function Formato({
 
 function TarjetaContenido({
   contenido,
+  titulo,
   mostrarNombre,
 }: {
   contenido: ContenidoOracion;
+  titulo: string;
   mostrarNombre: boolean;
 }) {
   return (
     <View style={styles.tarjeta}>
       {mostrarNombre ? <AppText style={styles.nombre}>{contenido.nombre}</AppText> : null}
       {contenido.youtube_url ? (
-        <Formato icono="logo-youtube" titulo="Haz la oración con nuestro video de YouTube" />
+        <VideoOracion enlace={contenido.youtube_url} titulo={titulo} />
       ) : null}
       {contenido.pdf_path ? (
         <Formato icono="document-text-outline" titulo="Haz la oración con nuestro PDF" />
@@ -146,7 +149,12 @@ export default function DetalleOracionScreen() {
         ) : (
           <View style={styles.contenidos}>
             {contenidos.map((item) => (
-              <TarjetaContenido key={item.id} contenido={item} mostrarNombre={!unico} />
+              <TarjetaContenido
+                key={item.id}
+                contenido={item}
+                titulo={datosOracion.nombre}
+                mostrarNombre={!unico}
+              />
             ))}
           </View>
         )}
