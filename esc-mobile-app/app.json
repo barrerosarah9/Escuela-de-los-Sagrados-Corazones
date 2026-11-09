@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.sagradoscorazones.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -52,7 +53,15 @@
           "microphonePermission": false
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#A11E21",
+          "defaultChannel": "general"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
