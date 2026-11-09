@@ -1,5 +1,6 @@
 import { Alert } from 'react-native';
 import { cerrarSesionDeGoogle } from './auth-google';
+import { olvidarTokenDelDispositivo } from './notificaciones';
 import { supabase } from './supabase';
 
 let irAIngresoTrasSalir = false;
@@ -19,6 +20,7 @@ export function confirmarCierreDeSesion(alConfirmar: () => void) {
 
 export async function cerrarSesion() {
   irAIngresoTrasSalir = true;
+  await olvidarTokenDelDispositivo().catch(() => undefined);
   await cerrarSesionDeGoogle();
   const { error } = await supabase.auth.signOut({ scope: 'local' });
   if (error) {

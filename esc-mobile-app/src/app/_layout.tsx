@@ -10,6 +10,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { activarNotificaciones } from '../lib/notificaciones';
 import { SessionProvider, useSession } from '../lib/session';
 
 SplashScreen.preventAutoHideAsync();
@@ -34,12 +35,20 @@ export default function RootLayout() {
 function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
   const { session, isLoading } = useSession();
   const ready = fontsReady && !isLoading;
+  const usuarioId = session?.user.id;
 
   useEffect(() => {
     if (ready) {
       SplashScreen.hideAsync();
     }
   }, [ready]);
+
+  useEffect(() => {
+    if (!usuarioId) {
+      return;
+    }
+    return activarNotificaciones();
+  }, [usuarioId]);
 
   if (!ready) {
     return null;
