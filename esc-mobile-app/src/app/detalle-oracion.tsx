@@ -8,6 +8,7 @@ import { BackHeader } from '../components/back-header';
 import { EstadoError } from '../components/estado-error';
 import { EstadoVacio } from '../components/estado-vacio';
 import { ListaCarga } from '../components/lista-carga';
+import { PdfOracion } from '../components/pdf-oracion';
 import { VideoOracion } from '../components/video-oracion';
 import {
   obtenerAsignacionesDeHoy,
@@ -82,7 +83,11 @@ function TarjetaContenido({
         <VideoOracion enlace={contenido.youtube_url} titulo={titulo} />
       ) : null}
       {contenido.pdf_path ? (
-        <Formato icono="document-text-outline" titulo="Haz la oración con nuestro PDF" />
+        <PdfOracion
+          contenidoId={contenido.id}
+          ruta={contenido.pdf_path}
+          nombre={contenido.nombre}
+        />
       ) : null}
       {contenido.imagen_path ? (
         <Formato icono="image-outline" titulo="Imagen de la oración" />
