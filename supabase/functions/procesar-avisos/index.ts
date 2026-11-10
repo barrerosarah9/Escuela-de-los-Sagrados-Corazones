@@ -110,15 +110,6 @@ function mensajeDe(aviso: Aviso): MensajePush {
   };
 }
 
-async function asistentesDe(admin: SupabaseClient, oracionId: number): Promise<Set<string>> {
-  const { data, error } = await admin
-    .from('asistencias')
-    .select('usuario_id')
-    .eq('oracion_en_vivo_id', oracionId);
-  if (error) throw new Error(error.message);
-  return new Set((data ?? []).map((fila: { usuario_id: string }) => fila.usuario_id));
-}
-
 async function marcarEnviado(admin: SupabaseClient, avisoId: number, envioId: number | null) {
   const { error } = await admin
     .from('avisos_push')
@@ -161,21 +152,12 @@ Deno.serve(async (req) => {
   const resumen: Record<string, unknown>[] = [];
 
   for (const aviso of avisos) {
-    let destinatarios = filas;
     let mensaje: MensajePush;
 
     if (aviso.tipo === 'recordatorio_oracion') {
       if (recordatorioVencido(aviso)) {
         await marcarEnviado(admin, aviso.id, null);
         resumen.push({ aviso_id: aviso.id, tipo: aviso.tipo, estado: 'vencido' });
-        continue;
-      }
-      try {
-        const asistentes = await asistentesDe(admin, aviso.oracion_en_vivo_id!);
-        destinatarios = filas.filter((fila) => asistentes.has(fila.usuario_id));
-      } catch (error) {
-        console.error('asistentes', aviso.id, error);
-        resumen.push({ aviso_id: aviso.id, tipo: aviso.tipo, estado: 'error' });
         continue;
       }
       mensaje = mensajeDeRecordatorio(aviso, await tituloDeOracion(admin, aviso));
@@ -187,26 +169,26 @@ Deno.serve(async (req) => {
       titulo: mensaje.titulo,
       texto: mensaje.texto,
       pantalla: mensaje.pantalla,
-      destinatarios: destinatarios.length,
+      destinatarios: filas.length,
     };
 
     let resultados: ResultadoToken[];
     try {
       resultados = await enviarPush(
         mensaje,
-        destinatarios.map((fila) => fila.token),
+        filas.map((fila) => fila.token),
       );
     } catch (error) {
       const detalle = error instanceof Error ? error.message : String(error);
       console.error('fcm', aviso.id, detalle);
       await admin
         .from('envios_push')
-        .insert({ ...registro, fallidos: destinatarios.length, error: detalle });
+        .insert({ ...registro, fallidos: filas.length, error: detalle });
       resumen.push({ aviso_id: aviso.id, tipo: aviso.tipo, estado: 'error' });
       continue;
     }
 
-    const porToken = new Map(destinatarios.map((fila) => [fila.token, fila]));
+    const porToken = new Map(filas.map((fila) => [fila.token, fila]));
     const invalidos = resultados.filter((resultado) => resultado.estado === 'invalido');
     const fallidos = resultados.filter((resultado) => resultado.estado === 'fallido');
 
