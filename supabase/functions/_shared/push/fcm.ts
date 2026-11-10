@@ -3,6 +3,7 @@ const URL_TOKEN = 'https://oauth2.googleapis.com/token';
 const INTENTOS = 3;
 const ESPERA_BASE_MS = 500;
 const ENVIOS_SIMULTANEOS = 20;
+const CANAL_POR_DEFECTO = 'general';
 
 type CuentaServicio = {
   project_id: string;
@@ -14,6 +15,7 @@ export type MensajePush = {
   titulo: string;
   texto: string;
   pantalla: string;
+  canal?: string;
 };
 
 export type EstadoEnvio = 'enviado' | 'invalido' | 'fallido';
@@ -151,7 +153,10 @@ async function enviarAToken(
               token,
               notification: { title: mensaje.titulo, body: mensaje.texto },
               data: { pantalla: mensaje.pantalla },
-              android: { priority: 'high' },
+              android: {
+                priority: 'high',
+                notification: { channel_id: mensaje.canal ?? CANAL_POR_DEFECTO },
+              },
               apns: { payload: { aps: { sound: 'default' } } },
             },
           }),
