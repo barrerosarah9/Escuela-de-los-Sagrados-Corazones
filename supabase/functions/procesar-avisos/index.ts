@@ -1,15 +1,24 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { enviarPush, type MensajePush, type ResultadoToken } from '../_shared/push/fcm.ts';
 
 const LIMITE_AVISOS = 10;
+const MAX_TITULO = 80;
 const MAX_TEXTO = 240;
+const CANAL_RECORDATORIOS = 'recordatorios';
+const DESFASE_BOGOTA = '-05:00';
+
+type TipoAviso = 'publicacion_nueva' | 'contenido_diario' | 'recordatorio_oracion';
 
 type Aviso = {
   id: number;
-  tipo: 'publicacion_nueva' | 'contenido_diario';
+  tipo: TipoAviso;
   publicacion_id: number | null;
   fecha: string | null;
   texto: string | null;
+  oracion_en_vivo_id: number | null;
+  oracion_titulo: string | null;
+  oracion_fecha: string | null;
+  oracion_hora: string | null;
 };
 
 type FilaToken = {
@@ -39,6 +48,52 @@ function recortar(valor: string, maximo: number): string {
   return `${limpio.slice(0, maximo - 1).trimEnd()}…`;
 }
 
+function formatearHora(hora: string): string {
+  const [horas, minutos] = hora.split(':').map(Number);
+  const horas12 = horas % 12 === 0 ? 12 : horas % 12;
+  const sufijo = horas < 12 ? 'a. m.' : 'p. m.';
+  return `${horas12}:${String(minutos).padStart(2, '0')} ${sufijo}`;
+}
+
+function diaSemanaIso(fecha: string): number {
+  const dia = new Date(`${fecha}T00:00:00Z`).getUTCDay();
+  return dia === 0 ? 7 : dia;
+}
+
+function inicioDeOracion(fecha: string, hora: string): number {
+  return new Date(`${fecha}T${hora.slice(0, 5)}:00${DESFASE_BOGOTA}`).getTime();
+}
+
+function recordatorioVencido(aviso: Aviso): boolean {
+  if (!aviso.oracion_fecha || !aviso.oracion_hora) return true;
+  return Date.now() >= inicioDeOracion(aviso.oracion_fecha, aviso.oracion_hora);
+}
+
+async function tituloDeOracion(admin: SupabaseClient, aviso: Aviso): Promise<string> {
+  const respaldo = aviso.oracion_titulo ?? 'Oración en vivo';
+  if (!aviso.oracion_fecha) return respaldo;
+  const { data, error } = await admin
+    .from('oraciones')
+    .select('nombre')
+    .eq('seccion', 'semana')
+    .eq('dia_semana', diaSemanaIso(aviso.oracion_fecha))
+    .maybeSingle();
+  if (error) {
+    console.error('oficio del día', aviso.id, error);
+    return respaldo;
+  }
+  return data?.nombre ?? respaldo;
+}
+
+function mensajeDeRecordatorio(aviso: Aviso, titulo: string): MensajePush {
+  return {
+    titulo: recortar(titulo, MAX_TITULO),
+    texto: `La oración en vivo es hoy a las ${formatearHora(aviso.oracion_hora ?? '00:00')} Toca para unirte.`,
+    pantalla: '/',
+    canal: CANAL_RECORDATORIOS,
+  };
+}
+
 function mensajeDe(aviso: Aviso): MensajePush {
   if (aviso.tipo === 'contenido_diario') {
     return {
@@ -53,6 +108,23 @@ function mensajeDe(aviso: Aviso): MensajePush {
     texto: texto || 'La Escuela compartió una nueva publicación.',
     pantalla: '/',
   };
+}
+
+async function asistentesDe(admin: SupabaseClient, oracionId: number): Promise<Set<string>> {
+  const { data, error } = await admin
+    .from('asistencias')
+    .select('usuario_id')
+    .eq('oracion_en_vivo_id', oracionId);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((fila: { usuario_id: string }) => fila.usuario_id));
+}
+
+async function marcarEnviado(admin: SupabaseClient, avisoId: number, envioId: number | null) {
+  const { error } = await admin
+    .from('avisos_push')
+    .update({ enviado_en: new Date().toISOString(), envio_id: envioId })
+    .eq('id', avisoId);
+  if (error) console.error('marcar aviso', avisoId, error);
 }
 
 Deno.serve(async (req) => {
@@ -89,31 +161,52 @@ Deno.serve(async (req) => {
   const resumen: Record<string, unknown>[] = [];
 
   for (const aviso of avisos) {
-    const mensaje = mensajeDe(aviso);
+    let destinatarios = filas;
+    let mensaje: MensajePush;
+
+    if (aviso.tipo === 'recordatorio_oracion') {
+      if (recordatorioVencido(aviso)) {
+        await marcarEnviado(admin, aviso.id, null);
+        resumen.push({ aviso_id: aviso.id, tipo: aviso.tipo, estado: 'vencido' });
+        continue;
+      }
+      try {
+        const asistentes = await asistentesDe(admin, aviso.oracion_en_vivo_id!);
+        destinatarios = filas.filter((fila) => asistentes.has(fila.usuario_id));
+      } catch (error) {
+        console.error('asistentes', aviso.id, error);
+        resumen.push({ aviso_id: aviso.id, tipo: aviso.tipo, estado: 'error' });
+        continue;
+      }
+      mensaje = mensajeDeRecordatorio(aviso, await tituloDeOracion(admin, aviso));
+    } else {
+      mensaje = mensajeDe(aviso);
+    }
+
     const registro = {
       titulo: mensaje.titulo,
       texto: mensaje.texto,
       pantalla: mensaje.pantalla,
-      destinatarios: filas.length,
+      destinatarios: destinatarios.length,
     };
 
     let resultados: ResultadoToken[];
     try {
       resultados = await enviarPush(
         mensaje,
-        filas.map((fila) => fila.token),
+        destinatarios.map((fila) => fila.token),
       );
     } catch (error) {
       const detalle = error instanceof Error ? error.message : String(error);
       console.error('fcm', aviso.id, detalle);
       await admin
         .from('envios_push')
-        .insert({ ...registro, fallidos: filas.length, error: detalle });
+        .insert({ ...registro, fallidos: destinatarios.length, error: detalle });
       resumen.push({ aviso_id: aviso.id, tipo: aviso.tipo, estado: 'error' });
       continue;
     }
 
-    const porToken = new Map(filas.map((fila) => [fila.token, fila]));
+    const porToken = new Map(destinatarios.map((fila) => [fila.token, fila]));
     const invalidos = resultados.filter((resultado) => resultado.estado === 'invalido');
     const fallidos = resultados.filter((resultado) => resultado.estado === 'fallido');
 
@@ -151,11 +244,7 @@ Deno.serve(async (req) => {
       .single();
     if (errorRegistro) console.error('registro', errorRegistro);
 
-    const { error: errorAviso } = await admin
-      .from('avisos_push')
-      .update({ enviado_en: new Date().toISOString(), envio_id: envio?.id ?? null })
-      .eq('id', aviso.id);
-    if (errorAviso) console.error('marcar aviso', aviso.id, errorAviso);
+    await marcarEnviado(admin, aviso.id, envio?.id ?? null);
 
     resumen.push({
       aviso_id: aviso.id,

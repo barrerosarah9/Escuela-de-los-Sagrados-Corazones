@@ -5,12 +5,26 @@ import { supabase } from './supabase';
 type ModuloNotificaciones = typeof import('expo-notifications');
 
 const CANAL = 'general';
+const CANAL_RECORDATORIOS = 'recordatorios';
 const CLAVE_PERMISO_PEDIDO = 'notificaciones:permiso-pedido';
 
 const disponibles = Platform.OS !== 'web' && !isRunningInExpoGo();
 
 let moduloCargado: ModuloNotificaciones | null = null;
 let ultimoToken: string | null = null;
+
+async function crearCanales(modulo: ModuloNotificaciones) {
+  await modulo.setNotificationChannelAsync(CANAL, {
+    name: 'Avisos de la Escuela',
+    description: 'Oraciones del día y publicaciones nuevas.',
+    importance: modulo.AndroidImportance.HIGH,
+  });
+  await modulo.setNotificationChannelAsync(CANAL_RECORDATORIOS, {
+    name: 'Recordatorios de oración en vivo',
+    description: 'Aviso antes de la oración en vivo a la que confirmaste asistencia.',
+    importance: modulo.AndroidImportance.HIGH,
+  });
+}
 
 async function cargarNotificaciones(): Promise<ModuloNotificaciones | null> {
   if (!disponibles) {
@@ -29,11 +43,7 @@ async function cargarNotificaciones(): Promise<ModuloNotificaciones | null> {
     }),
   });
   if (Platform.OS === 'android') {
-    await modulo.setNotificationChannelAsync(CANAL, {
-      name: 'Avisos de la Escuela',
-      description: 'Oraciones del día, publicaciones nuevas y recordatorios.',
-      importance: modulo.AndroidImportance.HIGH,
-    });
+    await crearCanales(modulo);
   }
   moduloCargado = modulo;
   return modulo;
