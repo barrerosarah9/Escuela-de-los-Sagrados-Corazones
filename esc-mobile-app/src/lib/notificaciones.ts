@@ -21,7 +21,7 @@ async function crearCanales(modulo: ModuloNotificaciones) {
   });
   await modulo.setNotificationChannelAsync(CANAL_RECORDATORIOS, {
     name: 'Recordatorios de oración en vivo',
-    description: 'Aviso antes de la oración en vivo a la que confirmaste asistencia.',
+    description: 'Aviso antes de que empiece la oración en vivo del día.',
     importance: modulo.AndroidImportance.HIGH,
   });
 }

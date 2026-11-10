@@ -25,13 +25,12 @@ select throws_ok(
   'Un recordatorio necesita la oración en vivo'
 );
 
-select lives_ok(
-  format(
-    'insert into public.avisos_push (tipo, oracion_en_vivo_id, enviar_desde) values (%L, %s, now())',
-    'recordatorio_oracion',
-    (select id from oracion_prueba)
-  ),
-  'Se encola un recordatorio de la oración en vivo'
+select is(
+  (select count(*)::int from public.avisos_push
+   where tipo = 'recordatorio_oracion'
+     and oracion_en_vivo_id = (select id from oracion_prueba)),
+  1,
+  'La oración en vivo tiene su recordatorio en la cola'
 );
 
 select throws_ok(
@@ -43,6 +42,11 @@ select throws_ok(
   '23505', null,
   'No se puede encolar dos veces el recordatorio de la misma oración'
 );
+
+update public.avisos_push
+set enviar_desde = now()
+where tipo = 'recordatorio_oracion'
+  and oracion_en_vivo_id = (select id from oracion_prueba);
 
 create temp table recordatorios_tomados as
 select * from public.tomar_avisos_pendientes(10)
