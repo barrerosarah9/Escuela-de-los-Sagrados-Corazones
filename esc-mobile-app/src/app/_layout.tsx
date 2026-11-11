@@ -10,6 +10,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { useNavegacionDesdeAvisos } from '../lib/navegacion-avisos';
 import { activarNotificaciones } from '../lib/notificaciones';
 import { SessionProvider, useSession } from '../lib/session';
 
@@ -36,6 +37,8 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
   const { session, isLoading } = useSession();
   const ready = fontsReady && !isLoading;
   const usuarioId = session?.user.id;
+
+  useNavegacionDesdeAvisos(ready, Boolean(session));
 
   useEffect(() => {
     if (ready) {

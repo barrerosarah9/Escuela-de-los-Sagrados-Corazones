@@ -26,7 +26,7 @@ async function crearCanales(modulo: ModuloNotificaciones) {
   });
 }
 
-async function cargarNotificaciones(): Promise<ModuloNotificaciones | null> {
+export async function cargarNotificaciones(): Promise<ModuloNotificaciones | null> {
   if (!disponibles) {
     return null;
   }
