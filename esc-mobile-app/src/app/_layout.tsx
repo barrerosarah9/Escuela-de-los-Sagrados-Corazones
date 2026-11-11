@@ -10,6 +10,8 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { useNavegacionDesdeAvisos } from '../lib/navegacion-avisos';
+import { activarNotificaciones } from '../lib/notificaciones';
 import { SessionProvider, useSession } from '../lib/session';
 
 SplashScreen.preventAutoHideAsync();
@@ -34,12 +36,22 @@ export default function RootLayout() {
 function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
   const { session, isLoading } = useSession();
   const ready = fontsReady && !isLoading;
+  const usuarioId = session?.user.id;
+
+  useNavegacionDesdeAvisos(ready, Boolean(session));
 
   useEffect(() => {
     if (ready) {
       SplashScreen.hideAsync();
     }
   }, [ready]);
+
+  useEffect(() => {
+    if (!usuarioId) {
+      return;
+    }
+    return activarNotificaciones();
+  }, [usuarioId]);
 
   if (!ready) {
     return null;
@@ -52,6 +64,10 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
         <Stack.Screen name="configuracion" />
         <Stack.Screen name="editar-perfil" />
         <Stack.Screen name="publicacion/[id]" />
+        <Stack.Screen name="seccion/[clave]" />
+        <Stack.Screen name="mes/[dia]" />
+        <Stack.Screen name="detalle-oracion" />
+        <Stack.Screen name="visor-pdf" />
       </Stack.Protected>
       <Stack.Protected guard={!session} redirectTo="/">
         <Stack.Screen name="(auth)" />
