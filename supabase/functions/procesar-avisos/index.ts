@@ -106,7 +106,7 @@ function mensajeDe(aviso: Aviso): MensajePush {
   return {
     titulo: 'Nueva publicación de la Escuela',
     texto: texto || 'La Escuela compartió una nueva publicación.',
-    pantalla: '/',
+    pantalla: aviso.publicacion_id ? `/publicacion/${aviso.publicacion_id}` : '/',
   };
 }
 
