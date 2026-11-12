@@ -4,6 +4,7 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { fechaCompleta, fechaRelativa } from '../lib/fecha-relativa';
 import type { Publicacion } from '../lib/feed';
+import { useMeGusta } from '../lib/me-gusta';
 import { colors, fonts } from '../theme';
 import { AppText } from './app-text';
 import { PublicacionImagenes } from './publicacion-imagenes';
@@ -20,8 +21,10 @@ function textoContador(total: number, singular: string, plural: string) {
 }
 
 function PublicacionCardBase({ publicacion, onAbrir }: Props) {
-  const { id, texto, imagenes, creadoEn, totalComentarios, totalMeGusta } = publicacion;
+  const { id, texto, imagenes, creadoEn, totalComentarios, totalMeGusta, meGustaPropio } =
+    publicacion;
   const tieneTexto = texto.trim().length > 0;
+  const meGusta = useMeGusta(id, { marcado: meGustaPropio, total: totalMeGusta });
 
   const contenido = (
     <>
@@ -53,14 +56,24 @@ function PublicacionCardBase({ publicacion, onAbrir }: Props) {
             <Ionicons name="chatbubble-outline" size={17} color={colors.textSecondary} />
             <AppText style={styles.numero}>{totalComentarios}</AppText>
           </View>
-          <View
-            style={styles.contador}
-            accessible
-            accessibilityLabel={textoContador(totalMeGusta, 'Me gusta', 'Me gusta')}
+          <Pressable
+            onPress={meGusta.alternar}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityState={{ selected: meGusta.marcado }}
+            accessibilityLabel={`Me gusta, ${textoContador(meGusta.total, 'persona', 'personas')}`}
+            accessibilityHint={meGusta.marcado ? 'Quita tu «Me gusta»' : 'Marca «Me gusta»'}
+            style={({ pressed }) => [styles.contador, pressed && styles.meGustaPresionado]}
           >
-            <Ionicons name="heart-outline" size={17} color={colors.textSecondary} />
-            <AppText style={styles.numero}>{totalMeGusta}</AppText>
-          </View>
+            <Ionicons
+              name={meGusta.marcado ? 'heart' : 'heart-outline'}
+              size={17}
+              color={meGusta.marcado ? colors.primary : colors.textSecondary}
+            />
+            <AppText style={[styles.numero, meGusta.marcado && styles.numeroMarcado]}>
+              {meGusta.total}
+            </AppText>
+          </Pressable>
         </View>
       </View>
     </>
@@ -139,5 +152,11 @@ const styles = StyleSheet.create({
   numero: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  numeroMarcado: {
+    color: colors.primary,
+  },
+  meGustaPresionado: {
+    opacity: 0.6,
   },
 });
