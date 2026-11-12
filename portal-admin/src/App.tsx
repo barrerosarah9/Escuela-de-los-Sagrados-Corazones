@@ -1230,7 +1230,7 @@ function CopiarProgramacion({ fecha, oraciones, admin, onCerrar, onCopiado }: { 
         <p className="copia-origen">Origen: <b>{modo === "dia" ? mayuscula(fechaLarga(fecha)) : `semana del ${rangoDeSemana(lunesDeLaSemana(fecha))}`}</b></p>
         <Input label={modo === "dia" ? "Fecha de destino" : "Cualquier día de la semana de destino"} type="date" value={destino} onChange={cambiarDestino}/>
         {semanaDestino && <p className="copia-nota">Se copiará a la semana del <b>{semanaDestino}</b>, cada día en el mismo día de la semana. Los días vacíos del origen no cambian nada.</p>}
-        <p className="copia-nota">Se copian las cinco oraciones variables y la imagen del widget. La Hora de María no se copia porque pertenece a su sábado.</p>
+        <p className="copia-nota">Se copian las oraciones, la imagen del widget y los oficios que correspondan al día de destino. La Hora de María se toma del sábado de destino.</p>
         {pendiente && <div className="aviso-asignado"><b>{pendiente.conContenido.length === 1 ? "Este destino ya tiene programación" : `${pendiente.conContenido.length} días de destino ya tienen programación`}</b><span>{listaDeFechas(pendiente.conContenido)}.</span><span>Si continúas, se reemplazará por la del origen.</span></div>}
         {pendiente && pendiente.omitidos.length > 0 && <p className="copia-nota">Se omitirán por estar publicados o pasados: {listaDeFechas(pendiente.omitidos)}.</p>}
         {error && <div className="form-error" role="alert">{error}</div>}
