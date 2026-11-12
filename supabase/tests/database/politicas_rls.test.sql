@@ -96,8 +96,15 @@ select is(
   (select count(*)::int from public.me_gusta m
    join public.publicaciones p on p.id = m.publicacion_id
    where p.texto = 'Publicación de prueba T-008'),
+  1,
+  'Usuario: solo ve su propio Me gusta, no quiénes más dieron'
+);
+
+select is(
+  (select total_me_gusta::int from public.publicaciones_con_conteos
+   where texto = 'Publicación de prueba T-008'),
   2,
-  'Usuario: ve todos los Me gusta para el conteo'
+  'Usuario: ve el número total de Me gusta'
 );
 
 with d as (
