@@ -8,7 +8,8 @@ import { EstadoError } from '../../components/estado-error';
 import { MenuRow, MenuSeparator } from '../../components/menu-row';
 import { PerfilSkeleton } from '../../components/perfil-skeleton';
 import { cerrarSesion, confirmarCierreDeSesion } from '../../lib/cerrar-sesion';
-import { obtenerPerfil, obtenerRacha, type Perfil } from '../../lib/perfil';
+import { obtenerPerfil, type Perfil } from '../../lib/perfil';
+import { obtenerResumenRacha, type ResumenRacha } from '../../lib/racha';
 import { useSession } from '../../lib/session';
 import { colors, fonts, spacing } from '../../theme';
 
@@ -36,8 +37,12 @@ function formatearMiembroDesde(creadoEn: string) {
   return `${MESES[fecha.getUTCMonth()]} de ${fecha.getUTCFullYear()}`;
 }
 
+function textoDias(dias: number) {
+  return dias === 1 ? '1 día' : `${dias} días`;
+}
+
 function textoRacha(dias: number) {
-  if (dias === 0) return 'Empieza hoy tu racha';
+  if (dias === 0) return '0 días · Empieza hoy tu racha';
   return dias === 1 ? '1 día seguido' : `${dias} días seguidos`;
 }
 
@@ -63,7 +68,7 @@ export default function PerfilScreen() {
   const { session } = useSession();
   const usuarioId = session?.user.id;
   const [perfil, setPerfil] = useState<Perfil | null>(null);
-  const [racha, setRacha] = useState<number | null>(null);
+  const [racha, setRacha] = useState<ResumenRacha | null>(null);
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
   const [errorCarga, setErrorCarga] = useState(false);
@@ -79,7 +84,7 @@ export default function PerfilScreen() {
       setErrorCarga(true);
     }
     try {
-      setRacha(await obtenerRacha(usuarioId));
+      setRacha(await obtenerResumenRacha(usuarioId));
     } catch {
       setRacha(null);
     }
@@ -169,8 +174,15 @@ export default function PerfilScreen() {
                 Racha de oración
               </AppText>
               <AppText style={styles.rachaTexto}>
-                {racha === null ? 'No disponible por ahora' : textoRacha(racha)}
+                {racha === null ? 'No disponible por ahora' : textoRacha(racha.actual)}
               </AppText>
+              {racha !== null ? (
+                <AppText variant="caption" color={colors.textSecondary}>
+                  {racha.mejor === 0
+                    ? 'Abre una oración de Santifica el día para empezar.'
+                    : `Mejor racha: ${textoDias(racha.mejor)}`}
+                </AppText>
+              ) : null}
             </View>
           </View>
 
