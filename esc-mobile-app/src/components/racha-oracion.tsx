@@ -21,7 +21,8 @@ export function RachaOracion({ dias }: Props) {
       <Ionicons name="flame" size={22} color={COLOR_LLAMA} />
       {vacia ? (
         <AppText style={[styles.texto, styles.textoVacio]}>
-          Aún no tienes días de oración. Abre una oración de Santifica el día para empezar tu racha.
+          <AppText style={styles.dias}>0 días</AppText> de oración. Abre una oración de Santifica el
+          día para empezar tu racha.
         </AppText>
       ) : (
         <AppText style={styles.texto}>
