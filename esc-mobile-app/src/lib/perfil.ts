@@ -1,3 +1,4 @@
+import { obtenerResumenRacha } from './racha';
 import { supabase } from './supabase';
 
 export type Perfil = {
@@ -23,12 +24,10 @@ export type ResultadoGuardado =
 export const BUCKET_AVATARES = 'avatares';
 
 const COLUMNAS = 'id, nombre, correo, telefono, foto_path, creado_en';
-const DIA_MS = 86_400_000;
 const DESFASE_BOGOTA_MS = 5 * 3_600_000;
 const DURACION_URL_FOTO_S = 3600;
 const MARGEN_RENOVACION_URL_MS = 5 * 60_000;
 const MAXIMO_URLS_EN_CACHE = 200;
-const MAXIMO_DIAS_RACHA = 366;
 
 type UrlEnCache = { url: string; venceEn: number };
 
@@ -108,28 +107,6 @@ export function fechaHoyBogota() {
   return new Date(Date.now() - DESFASE_BOGOTA_MS).toISOString().slice(0, 10);
 }
 
-function diaAnterior(fecha: string) {
-  return new Date(Date.parse(`${fecha}T00:00:00Z`) - DIA_MS).toISOString().slice(0, 10);
-}
-
-export function calcularRacha(fechas: string[], hoy = fechaHoyBogota()) {
-  const dias = new Set(fechas);
-  let cursor = dias.has(hoy) ? hoy : diaAnterior(hoy);
-  let racha = 0;
-  while (dias.has(cursor)) {
-    racha += 1;
-    cursor = diaAnterior(cursor);
-  }
-  return racha;
-}
-
 export async function obtenerRacha(usuarioId: string) {
-  const { data, error } = await supabase
-    .from('dias_oracion')
-    .select('fecha')
-    .eq('usuario_id', usuarioId)
-    .order('fecha', { ascending: false })
-    .limit(MAXIMO_DIAS_RACHA);
-  if (error) throw error;
-  return calcularRacha((data ?? []).map((fila) => fila.fecha as string));
+  return (await obtenerResumenRacha(usuarioId)).actual;
 }
