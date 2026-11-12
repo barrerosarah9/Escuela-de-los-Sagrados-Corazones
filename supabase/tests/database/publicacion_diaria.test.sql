@@ -35,8 +35,8 @@ select is(
 
 select is(
   public.publicar_dia(current_date + 600),
-  4,
-  'Publicar: faltan 4 de las 5 oraciones y el widget está'
+  5,
+  'Publicar: faltan 4 de las 5 oraciones y el oficio de la semana; el widget está'
 );
 
 select ok(
@@ -46,14 +46,14 @@ select ok(
 
 select is(
   (select count(*)::int from public.alertas_publicacion where fecha = current_date + 600),
-  4,
+  5,
   'Publicar: registra una alerta por cada oración faltante'
 );
 
 select is(
   public.publicar_dia(current_date + 601),
-  6,
-  'Publicar: un día sin programar registra las 6 alertas'
+  7,
+  'Publicar: un día sin programar registra las 7 alertas'
 );
 
 select is(
@@ -85,7 +85,7 @@ select ok(
 
 select is(
   public.publicar_dia(current_date + 601),
-  6,
+  7,
   'Publicar: repetir el mismo día no duplica alertas'
 );
 
@@ -138,7 +138,7 @@ select is(
 
 select is(
   (select count(*)::int from public.alertas_publicacion where fecha in (current_date + 600, current_date + 601)),
-  10,
+  12,
   'Administrador: ve las alertas'
 );
 
