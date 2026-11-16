@@ -1,9 +1,11 @@
+import { registrarMeGustaDelServidor } from './me-gusta';
 import { supabase } from './supabase';
 
 export const BUCKET_PUBLICACIONES = 'publicaciones';
 export const TAMANO_PAGINA = 10;
 
-const COLUMNAS = 'id, texto, imagenes, creado_en, total_comentarios, total_me_gusta';
+const COLUMNAS =
+  'id, texto, imagenes, creado_en, total_comentarios, total_me_gusta, me_gusta_propio';
 
 export type Publicacion = {
   id: number;
@@ -12,6 +14,7 @@ export type Publicacion = {
   creadoEn: string;
   totalComentarios: number;
   totalMeGusta: number;
+  meGustaPropio: boolean;
 };
 
 export type CursorFeed = {
@@ -43,6 +46,7 @@ type FilaPublicacion = {
   creado_en: string;
   total_comentarios: number | string | null;
   total_me_gusta: number | string | null;
+  me_gusta_propio: boolean | null;
 };
 
 function aPublicacion(fila: FilaPublicacion): Publicacion {
@@ -53,7 +57,18 @@ function aPublicacion(fila: FilaPublicacion): Publicacion {
     creadoEn: fila.creado_en,
     totalComentarios: Number(fila.total_comentarios ?? 0),
     totalMeGusta: Number(fila.total_me_gusta ?? 0),
+    meGustaPropio: fila.me_gusta_propio ?? false,
   };
+}
+
+function registrarMeGusta(publicaciones: Publicacion[]) {
+  registrarMeGustaDelServidor(
+    publicaciones.map((publicacion) => ({
+      id: publicacion.id,
+      marcado: publicacion.meGustaPropio,
+      total: publicacion.totalMeGusta,
+    })),
+  );
 }
 
 function esErrorDeRed(mensaje: string) {
@@ -90,6 +105,7 @@ export async function obtenerPaginaFeed(cursor: CursorFeed | null = null): Promi
   const filas = (data ?? []) as FilaPublicacion[];
   const hayMas = filas.length > TAMANO_PAGINA;
   const publicaciones = filas.slice(0, TAMANO_PAGINA).map(aPublicacion);
+  registrarMeGusta(publicaciones);
   const ultima = publicaciones.at(-1);
 
   return {
@@ -112,5 +128,8 @@ export async function obtenerPublicacion(id: number): Promise<Publicacion | null
     );
   }
 
-  return data ? aPublicacion(data as FilaPublicacion) : null;
+  if (!data) return null;
+  const publicacion = aPublicacion(data as FilaPublicacion);
+  registrarMeGusta([publicacion]);
+  return publicacion;
 }

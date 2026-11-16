@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
-import { useCallback, type ComponentProps } from 'react';
+import { useCallback, useEffect, type ComponentProps } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppText } from '../components/app-text';
@@ -18,6 +18,8 @@ import {
   type ContenidoOracion,
   type SeccionCatalogo,
 } from '../lib/oraciones-hoy';
+import { esDeSantificaElDia, registrarDiaDeOracion } from '../lib/racha';
+import { useSession } from '../lib/session';
 import { useCarga } from '../lib/use-carga';
 import { colors, fonts } from '../theme';
 
@@ -104,6 +106,14 @@ export default function DetalleOracionScreen() {
   const carga = useCarga(
     useCallback(() => cargarDetalle(clave, contenidoId), [clave, contenidoId]),
   );
+  const { session } = useSession();
+  const usuarioId = session?.user.id;
+  const seccion = carga.datos?.oracion.seccion;
+  const cuentaParaLaRacha = esDeSantificaElDia(clave) || seccion === 'dia';
+
+  useEffect(() => {
+    if (cuentaParaLaRacha && usuarioId) void registrarDiaDeOracion(usuarioId);
+  }, [cuentaParaLaRacha, usuarioId]);
 
   const renderCuerpo = () => {
     if (carga.estado === 'cargando') return <ListaCarga filas={2} />;

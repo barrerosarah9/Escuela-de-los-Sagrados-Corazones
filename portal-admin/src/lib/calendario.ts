@@ -38,7 +38,7 @@ export const MENSAJES_CALENDARIO = {
   mismaFecha: 'Elige una fecha distinta a la de origen.',
   mismaSemana: 'Elige una semana distinta a la de origen.',
   origenVacio:
-    'No hay nada que copiar: el origen no tiene oraciones variables ni imagen del widget asignadas.',
+    'No hay nada que copiar: el origen no tiene oraciones, imagen del widget ni oficios asignados.',
   destinoBloqueado:
     'No se puede copiar: los días de destino ya se publicaron o ya pasaron.',
 };
@@ -126,7 +126,13 @@ type FilaAsignacion = {
 
 type ErrorDeSupabase = {
   code?: string;
+  hint?: string | null;
   message: string;
+};
+
+type FilaEstado = {
+  fecha: string;
+  estado: EstadoDia;
 };
 
 const COLUMNAS_CONTENIDO =
@@ -155,6 +161,7 @@ function relanzar(error: unknown, porDefecto: string): never {
 }
 
 function mensajeDeGuardado(error: ErrorDeSupabase) {
+  if (error.hint === 'dia_publicado') return MENSAJES_CALENDARIO.publicado;
   if (error.code === '42501') return MENSAJES_CALENDARIO.sinPermisos;
   if (error.code === '23514') return MENSAJES_CALENDARIO.tipoInvalido;
   if (error.code === '23503') return MENSAJES_CALENDARIO.contenidoNoExiste;
@@ -200,9 +207,8 @@ export function oracionesDiarias(oraciones: OracionesCalendario) {
 }
 
 export function oracionesRequeridas(fecha: string, oraciones: OracionesCalendario) {
-  return esSabado(fecha)
-    ? [...oraciones.variables, oraciones.horaMaria, oraciones.widget]
-    : oracionesDiarias(oraciones);
+  const oficio = oficioDeLaSemana(fecha, oraciones);
+  return [...oraciones.variables, ...(oficio ? [oficio] : []), oraciones.widget];
 }
 
 export function esPrimeraSemana(fecha: string) {
@@ -408,7 +414,7 @@ export async function cargarDias(
   oraciones: OracionesCalendario,
 ): Promise<DiaCalendario[]> {
   try {
-    const [dias, contenidos, oficios] = await Promise.all([
+    const [dias, contenidos, oficios, estados] = await Promise.all([
       supabase
         .from('calendario_dias')
         .select('fecha, publicado_en')
@@ -432,9 +438,10 @@ export async function cargarDias(
           'oracion_id',
           [...oraciones.semana, ...oraciones.mes, ...oraciones.anio].map(oracion => oracion.id),
         ),
+      supabase.rpc('estados_calendario', { p_desde: desde, p_hasta: hasta }),
     ]);
 
-    const error = dias.error ?? contenidos.error ?? oficios.error;
+    const error = dias.error ?? contenidos.error ?? oficios.error ?? estados.error;
     if (error) throw errorDeCarga(error, MENSAJES_CALENDARIO.carga);
 
     const publicados = new Map(
@@ -448,6 +455,10 @@ export async function cargarDias(
       asignaciones.set(fila.fecha, delDia);
     }
 
+    const estadosPorFecha = new Map(
+      ((estados.data ?? []) as FilaEstado[]).map(fila => [fila.fecha, fila.estado]),
+    );
+
     const fechas: string[] = [];
     for (let fecha = desde; fecha <= hasta; fecha = sumarDias(fecha, 1)) fechas.push(fecha);
 
@@ -458,7 +469,7 @@ export async function cargarDias(
         fecha,
         publicado,
         asignaciones: delDia,
-        estado: estadoDelDia(fecha, publicado, delDia, oraciones),
+        estado: estadosPorFecha.get(fecha) ?? estadoDelDia(fecha, publicado, delDia, oraciones),
       };
     });
   } catch (error) {
@@ -537,10 +548,8 @@ export async function guardarDia(
   }
 }
 
-function asignacionesDiarias(dia: DiaCalendario, oraciones: OracionesCalendario) {
-  return oracionesDiarias(oraciones)
-    .filter(oracion => !!dia.asignaciones[oracion.id])
-    .map(oracion => ({ oracion_id: oracion.id, contenido_id: dia.asignaciones[oracion.id] }));
+function tieneProgramacion(dia: DiaCalendario) {
+  return Object.keys(dia.asignaciones).length > 0;
 }
 
 export async function copiarProgramacion(
@@ -548,7 +557,7 @@ export async function copiarProgramacion(
   origen: string,
   destino: string,
   oraciones: OracionesCalendario,
-  adminId: string,
+  _adminId: string,
   reemplazar: boolean,
 ): Promise<ResultadoCopia> {
   if (!esFechaValida(destino)) return { estado: 'invalida', mensaje: MENSAJES_CALENDARIO.destinoVacio };
@@ -561,17 +570,17 @@ export async function copiarProgramacion(
       mensaje: modo === 'dia' ? MENSAJES_CALENDARIO.mismaFecha : MENSAJES_CALENDARIO.mismaSemana,
     };
   }
-  const largo = modo === 'dia' ? 0 : 6;
+  const dias = modo === 'dia' ? 1 : 7;
 
   try {
     const [diasOrigen, diasDestino] = await Promise.all([
-      cargarDias(inicioOrigen, sumarDias(inicioOrigen, largo), oraciones),
-      cargarDias(inicioDestino, sumarDias(inicioDestino, largo), oraciones),
+      cargarDias(inicioOrigen, sumarDias(inicioOrigen, dias - 1), oraciones),
+      cargarDias(inicioDestino, sumarDias(inicioDestino, dias - 1), oraciones),
     ]);
 
     const pares = diasOrigen
       .map((dia, i) => ({ origen: dia, destino: diasDestino[i] }))
-      .filter(par => asignacionesDiarias(par.origen, oraciones).length > 0);
+      .filter(par => tieneProgramacion(par.origen));
     if (!pares.length) return { estado: 'invalida', mensaje: MENSAJES_CALENDARIO.origenVacio };
 
     const omitidos = pares.filter(par => bloqueoDelDia(par.destino)).map(par => par.destino.fecha);
@@ -581,41 +590,25 @@ export async function copiarProgramacion(
     }
 
     const conContenido = disponibles
-      .filter(par => asignacionesDiarias(par.destino, oraciones).length > 0)
+      .filter(par => tieneProgramacion(par.destino))
       .map(par => par.destino.fecha);
     if (conContenido.length && !reemplazar) return { estado: 'confirmar', conContenido, omitidos };
 
-    const fechas = disponibles.map(par => par.destino.fecha);
-    const { error: errorDias } = await supabase
-      .from('calendario_dias')
-      .upsert(
-        fechas.map(fecha => ({ fecha, creado_por: adminId })),
-        { onConflict: 'fecha', ignoreDuplicates: true },
-      );
-    if (errorDias) return { estado: 'error', mensaje: mensajeDeGuardado(errorDias) };
+    const { data, error } = await supabase.rpc('copiar_programacion', {
+      p_origen: inicioOrigen,
+      p_destino: inicioDestino,
+      p_dias: dias,
+    });
+    if (error) return { estado: 'error', mensaje: mensajeDeGuardado(error) };
 
-    const filas = disponibles.flatMap(par =>
-      asignacionesDiarias(par.origen, oraciones).map(fila => ({ fecha: par.destino.fecha, ...fila })),
-    );
-    const { error: errorFilas } = await supabase
-      .from('calendario_contenidos')
-      .upsert(filas, { onConflict: 'fecha,oracion_id' });
-    if (errorFilas) return { estado: 'error', mensaje: mensajeDeGuardado(errorFilas) };
-
-    for (const par of disponibles) {
-      const quitar = oracionesDiarias(oraciones)
-        .map(oracion => oracion.id)
-        .filter(id => !par.origen.asignaciones[id]);
-      if (!quitar.length) continue;
-      const { error } = await supabase
-        .from('calendario_contenidos')
-        .delete()
-        .eq('fecha', par.destino.fecha)
-        .in('oracion_id', quitar);
-      if (error) return { estado: 'error', mensaje: mensajeDeGuardado(error) };
+    const copiados = (data ?? []) as string[];
+    if (!copiados.length) {
+      return { estado: 'invalida', mensaje: MENSAJES_CALENDARIO.destinoBloqueado };
     }
-
-    return { estado: 'ok', copiados: fechas, omitidos };
+    const noCopiados = disponibles
+      .map(par => par.destino.fecha)
+      .filter(fecha => !copiados.includes(fecha));
+    return { estado: 'ok', copiados, omitidos: [...omitidos, ...noCopiados] };
   } catch (error) {
     return {
       estado: 'error',
